@@ -1,0 +1,15 @@
+import path from 'node:path';
+export const config = {
+  dataDir: path.resolve(/* turbopackIgnore: true */ process.env.DATA_DIR || './data'),
+  ttsBase: (process.env.TTS_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, ''),
+  ttsVoice: process.env.TTS_VOICE || 'af_heart',
+  ttsTimeout: Number(process.env.TTS_TIMEOUT_MS || 600000),
+  llmBase: (process.env.LLM_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, ''),
+  llmKey: process.env.LLM_API_KEY || '',
+  llmModel: process.env.LLM_MODEL || 'gpt-4.1-mini',
+  renderer: process.env.VIDEO_RENDERER || 'ffmpeg',
+  database: process.env.DATABASE_URL || '', redis: process.env.REDIS_URL || '',
+  privateUrls: process.env.ALLOW_PRIVATE_URLS === 'true',
+  explorePages: Math.max(1, Math.min(6, Number(process.env.MAX_EXPLORE_PAGES || 4))),
+  width: 1080, height: 1920, fps: 30,
+};

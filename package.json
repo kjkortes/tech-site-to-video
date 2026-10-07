@@ -1,0 +1,44 @@
+{
+  "name": "tech-site-to-video",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "overrides": { "shell-quote": "^1.12.0" },
+  "scripts": {
+    "dev": "concurrently --kill-others -n web,worker \"next dev --hostname 127.0.0.1\" \"tsx watch --env-file-if-exists=.env src/worker.ts\"",
+    "dev:web": "next dev --hostname 127.0.0.1",
+    "worker": "tsx --env-file-if-exists=.env src/worker.ts",
+    "build": "next build",
+    "start": "concurrently --kill-others -n web,worker \"next start --hostname 127.0.0.1\" \"npm run worker\"",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "tsx --env-file-if-exists=.env scripts/smoke.ts",
+    "doctor": "tsx --env-file-if-exists=.env scripts/doctor.ts",
+    "setup:browser": "playwright install chromium",
+    "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts"
+  },
+  "dependencies": {
+    "bullmq": "^5.79.0",
+    "dotenv": "^17.2.3",
+    "gsap": "3.14.2",
+    "hyperframes": "0.8.140",
+    "ipaddr.js": "^2.3.0",
+    "lucide-react": "^0.577.0",
+    "next": "16.4.0",
+    "pg": "^8.16.3",
+    "playwright": "1.63.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "@types/pg": "^8.16.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

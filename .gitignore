@@ -1,0 +1,7 @@
+node_modules/
+.next/
+.env
+data/
+test-output/
+*.tsbuildinfo
+*.log
