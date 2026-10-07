@@ -35,7 +35,7 @@ Open **http://127.0.0.1:3000**. `npm run dev:web` starts only the interface; `np
 - Separate browser passes. Exploration saves screenshots and replay instructions; only the fresh recording pass becomes browser footage.
 - Vertical videos browse with a phone-width viewport, mobile user agent, and touch emulation so sites use their responsive mobile layout. Regenerating visuals refreshes older desktop captures while preserving the script and narration.
 - Public-page research, including GitHub's rendered README and relevant documentation links. Every factual segment cites an exact excerpt and a discovered visual from the same source.
-- Optional OpenAI-compatible model for research, safe exploratory interactions, script writing, and an independent factual audit. Set `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL`. Website text is treated as untrusted evidence.
+- Optional local Codex provider using your ChatGPT login, or an OpenAI-compatible API provider, for research, safe exploratory interactions, script writing, and an independent factual audit. Website text is treated as untrusted evidence.
 - **Without a model**, the app works in conservative source-excerpt mode. This avoids inventing capabilities, but produces a less polished script. No fake model responses or placeholder videos are used.
 - Kokoro uses `/api/jobs` with storyboard segments, polls a saved speech job ID, downloads the real WAV, and uses returned timestamps as the master timeline. There is no silent or synthetic fallback for a missing speech service.
 - Independent Playwright clips with handles, saved after each shot. Replays try stored/semantic/text locators; failures retry the shot, then use its discovered screenshot as a supporting visual.
@@ -44,6 +44,29 @@ Open **http://127.0.0.1:3000**. `npm run dev:web` starts only the interface; `np
 - QA checks output existence, streams, voice duration, resolution, black intervals, long silence, clip duration, static sections, error-page titles, caption constraints, evidence references, and complete shot coverage. Model mode also checks factual entailment. Media failures get one automatic repair pass.
 - Local JSON snapshots are atomically replaced. Per-job leases prevent a worker and review action from writing simultaneously. Worker restarts reuse stage artifacts and completed clips. Provider/stage failures get one automatic retry and then an actionable saved failure.
 - Optional PostgreSQL job persistence and BullMQ/Redis dispatch. Local disk remains the artifact store in both modes.
+
+## Use your ChatGPT subscription through Codex
+
+Install a current Codex CLI (the integration uses `--ignore-user-config` and `--ephemeral`), then run `codex login` and choose your ChatGPT account. `codex login status` should report **Logged in using ChatGPT**. The VS Code extension and CLI can reuse the same cached login.
+
+Set in `.env` and restart the studio and worker:
+
+```dotenv
+LLM_PROVIDER=codex
+CODEX_BIN=codex
+CODEX_MODEL=
+CODEX_TIMEOUT_MS=180000
+```
+
+No `LLM_API_KEY` is needed for this mode. Requests use your included Codex allowance and its usage limits. `CODEX_MODEL` can select a model available to your account; leave it blank for Codex's default. `LLM_MODEL` applies only to the API provider. If Codex is not on the worker's PATH, set `CODEX_BIN` to the executable's absolute path. Studio settings and `npm run doctor` show login readiness.
+
+Each request starts an ephemeral Codex process in a temporary working directory, sends the task/evidence over stdin, validates its JSON response, and cleans up afterward. User configuration, plugins, shell, browsing, image inspection, and subagents are disabled for these requests. Codex handles its own saved login; the app never copies authentication tokens. ChatGPT auth is required and inherited API credentials are removed from the child environment. Missing login, usage limits, invalid responses, or timeouts surface as failures; they never switch to API billing.
+
+Provider choices: `codex` uses the subscription, `api` requires `LLM_API_KEY`, `extractive` uses source excerpts, and `auto` preserves the original behavior (API when a key is present, otherwise excerpts). For the API provider, configure `LLM_BASE_URL` and `LLM_MODEL` as before.
+
+New projects use the selected provider. Existing projects retain saved research and scripts until regenerated; choose **Full video** to redo research, or **Script & downstream stages** to rewrite narration using existing evidence.
+
+See the official OpenAI documentation for [Codex authentication](https://learn.chatgpt.com/docs/auth) and [non-interactive requests](https://learn.chatgpt.com/docs/non-interactive-mode).
 
 ## Persistence and regeneration
 
@@ -122,7 +145,7 @@ Exploration is bounded to a handful of public pages and headings, with optional 
 
 Pixel-level semantic vision QA is not implemented. The quality report explicitly marks frame meaning for human review. Error detection currently uses HTTP responses and page titles, freeze detection flags static sections as review warnings, and caption validation checks timing/length constraints rather than every rasterized pixel. A QA percentage is the share of checks passed, not a claim that a vision model graded the video. The final human review remains necessary.
 
-AI quality and GitHub/site variability require broader real-world evaluation. The default renderer and local pipeline are covered end to end, and a short HyperFrames composition has been checked and rendered. Model, Redis, and PostgreSQL adapters require their configured services. S3 storage and automatic publishing are future work.
+AI quality and GitHub/site variability require broader real-world evaluation. The default renderer and local pipeline are covered end to end, and a short HyperFrames composition has been checked and rendered. AI providers require a ready Codex ChatGPT login or API endpoint; Redis and PostgreSQL require their configured services. S3 storage and automatic publishing are future work.
 
 The app binds to loopback and is intended for a trusted local workspace. It has no multi-user authentication. Do not turn this into a public service without authentication, quotas, sandboxed browser egress, and stronger storage isolation. URL validation rejects private/loopback/link-local addresses and checks browser requests and redirects, but DNS validation alone is not a hardened defense against DNS rebinding.
 

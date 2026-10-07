@@ -21,10 +21,14 @@ const paragraphs = [
 ];
 const html = `<!doctype html><html><head><title>NoteHarbor | Document workspace</title><meta name="description" content="Markdown document workspace"><style>body{margin:0;font:24px Arial;background:#f3f7fc;color:#1d3558}nav{background:#275eaa;color:white;padding:32px}main{padding:60px 70px}section{padding:75px 0;border-bottom:1px solid #cbd8eb;min-height:450px}h1{font-size:62px}h2{font-size:40px}p{line-height:1.8}.demo{display:grid;grid-template-columns:1fr 1fr;gap:20px}.box{padding:35px;background:white;border:1px solid #d4e0f1;border-radius:20px}</style></head><body><nav>NoteHarbor</nav><main><h1>A home for your Markdown.</h1>${paragraphs.map((text, i) => `<section><h2>${['Find your notes', 'Your workspace', 'Document preview', 'Example gallery', 'Search your library', 'Documentation'][i]}</h2><p>${text}</p><div class="demo"><div class="box">${['Project notes', 'Document library', '# Project overview', 'Technical reference', 'Search results', 'Import Markdown'][i]}</div><div class="box">Browse · Preview · Organize</div></div></section>`).join('')}</main></body></html>`;
 const server = http.createServer((_request, response) => { response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(html); });
-await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+// Reopen the same fixture address when resuming so saved scenes remain replayable.
+const resumedJob = process.env.SMOKE_RESUME_ID ? await getJob(process.env.SMOKE_RESUME_ID) : null;
+if (process.env.SMOKE_RESUME_ID && !resumedJob) throw new Error('Smoke resume job not found');
+const fixturePort = resumedJob ? Number(new URL(resumedJob.url).port) : 0;
+await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(fixturePort, '127.0.0.1', resolve); });
 const port = (server.address() as import('node:net').AddressInfo).port;
 try {
-  const job = process.env.SMOKE_RESUME_ID ? await getJob(process.env.SMOKE_RESUME_ID) : await createJob(`http://127.0.0.1:${port}`);
+  const job = resumedJob || await createJob(`http://127.0.0.1:${port}`);
   if (!job) throw new Error('Smoke resume job not found');
   if (job.status === 'FAILED') { job.status = 'RECEIVED'; job.error = undefined; await saveJob(job); }
   console.log(`Running real browser + Kokoro + FFmpeg pipeline: ${job.id}`);

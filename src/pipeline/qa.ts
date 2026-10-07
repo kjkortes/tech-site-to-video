@@ -3,11 +3,14 @@ import { stat } from 'node:fs/promises';
 import { z } from 'zod';
 import { jobDir } from '../lib/store';
 import { probe, run } from '../lib/process';
-import { config } from '../lib/config';
-import { modelJson } from '../lib/llm';
+import { modelJson, modelEnabled } from '../lib/llm';
 import { Inventory, QAReport, Research, Script, Shot, ShotResult, Transcript } from '../lib/types';
 import { validateScript } from './script';
 import { captionChunks } from './captions';
+
+export async function auditScript(script: Script, research: Research) {
+  return modelJson('Independently audit each narration segment against its cited source quotes. Return {supported:boolean,issues:[string]}. Every factual assertion must be entailed by its cited quotes. Reject added claims about price, licenses, capabilities, benefits, purposes, or website locations. Evaluate the actual words asserted, not stronger statements the narration does not make. Lists introduced by "includes", "such as", or "examples" are non-exhaustive: naming three examples does not assert that there are exactly or only three in total. Conversely, "only", "exactly", and exhaustive totals require explicit evidence. Accept faithful paraphrases and literal counts of explicitly named items. Report specific unsupported assertions, not speculative implications or stylistic preferences.', { script, claims: research.claims }, z.object({ supported: z.boolean(), issues: z.array(z.string()) }));
+}
 
 export async function checkVideo(id: string, research: Research, inventory: Inventory, script: Script, transcript: Transcript, shots: Shot[], recordings: ShotResult[]): Promise<QAReport> {
   const checks: QAReport['checks'] = [];
@@ -43,8 +46,8 @@ export async function checkVideo(id: string, research: Research, inventory: Inve
   const total = shots.reduce((sum, shot) => sum + shot.duration, 0);
   add('coverage', 'Full visual coverage', Math.abs(total - transcript.duration) < 0.1 && shots.length === recordings.length, 'Shot plan follows narration timing without gaps');
   add('fallbacks', 'Clean browser recordings', recordings.every(r => !r.fallback), `${recordings.filter(r => r.fallback).length} screenshot fallbacks`, 'warning');
-  if (config.llmKey && script.mode === 'model') {
-    const verdict = await modelJson('Independently audit each narration segment against its cited source quotes. Return {supported:boolean,issues:[string]}. Require each factual assertion to be entailed by the actual quotes, not merely thematically related. Fail added claims about price, licenses or capabilities.', { script, claims: research.claims }, z.object({ supported: z.boolean(), issues: z.array(z.string()) }));
+  if (modelEnabled() && script.mode === 'model') {
+    const verdict = await auditScript(script, research);
     add('semantic', 'Claims match their evidence', verdict.supported, verdict.issues.join('; ') || 'Independent model audit passed');
   }
   add('vision', 'Frame meaning', false, 'Pixel-level semantic review is not configured. Review the final footage before approval.', 'warning');

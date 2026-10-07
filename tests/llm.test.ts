@@ -1,0 +1,94 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, writeFile, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { z } from 'zod';
+import { config } from '../src/lib/config';
+import { modelJson, modelProvider, modelEnabled, modelLabel, checkCodexLogin } from '../src/lib/llm';
+
+test('provider selection preserves API/excerpt defaults and explicitly enables Codex without an API key', () => {
+  const saved = { ...config };
+  try {
+    config.llmProvider = 'auto'; config.llmKey = '';
+    assert.equal(modelProvider(), 'extractive'); assert.equal(modelEnabled(), false);
+    config.llmKey = 'test-key'; assert.equal(modelProvider(), 'api');
+    config.llmProvider = 'codex'; config.llmKey = '';
+    assert.equal(modelEnabled(), true); assert.match(modelLabel(), /Codex.*ChatGPT/);
+    config.llmProvider = 'extractive'; config.llmKey = 'test-key'; assert.equal(modelEnabled(), false);
+    config.llmProvider = 'typo'; assert.throws(modelProvider, /LLM_PROVIDER/);
+  } finally { Object.assign(config, saved); }
+});
+
+test('Codex sends evidence over stdin, uses ChatGPT auth, validates output and cleans isolated requests', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'frameforge-codex-test-'));
+  const saved = { ...config }; const oldEnv = { ...process.env }; const originalFetch = globalThis.fetch;
+  const capture = path.join(directory, 'request.json'); const executable = path.join(directory, 'codex-fixture');
+  await writeFile(executable, `#!/usr/bin/env node
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+if (args.includes('login')) { console.error(process.env.CODEX_FIXTURE_MODE === 'api-login' ? 'Logged in using an API key' : 'Logged in using ChatGPT'); process.exit(0); }
+let input = ''; process.stdin.setEncoding('utf8'); process.stdin.on('data', chunk => input += chunk);
+process.stdin.on('end', () => {
+  fs.writeFileSync(process.env.CODEX_FIXTURE_CAPTURE, JSON.stringify({args,input,cwd:process.cwd(),apiKeyPresent:!!process.env.OPENAI_API_KEY || !!process.env.CODEX_API_KEY || !!process.env.CODEX_ACCESS_TOKEN || !!process.env.LLM_API_KEY}));
+  if (process.env.CODEX_FIXTURE_MODE === 'timeout') { setInterval(() => {}, 1000); return; }
+  if (process.env.CODEX_FIXTURE_MODE === 'failure') { console.error('Subscription usage limit reached'); process.exit(1); }
+  const output = args[args.indexOf('--output-last-message') + 1];
+  fs.writeFileSync(output, process.env.CODEX_FIXTURE_MODE === 'malformed' ? 'not JSON' : process.env.CODEX_FIXTURE_MODE === 'invalid' ? '{"answer":12}' : '{"answer":"Evidence checked"}');
+});
+`, { mode: 0o700 });
+  let apiCalls = 0;
+  globalThis.fetch = async () => { apiCalls++; throw new Error('Unexpected API billing path'); };
+  try {
+    config.llmProvider = 'codex'; config.codexBin = executable; config.codexTimeout = 2000;
+    config.codexModel = ''; config.llmKey = 'unused-test-key';
+    process.env.CODEX_FIXTURE_CAPTURE = capture;
+    process.env.OPENAI_API_KEY = 'unused'; process.env.CODEX_API_KEY = 'unused'; process.env.CODEX_ACCESS_TOKEN = 'unused'; process.env.LLM_API_KEY = 'unused';
+    const schema = z.object({ answer: z.string() });
+    assert.equal((await checkCodexLogin()).ok, true);
+    assert.deepEqual(await modelJson('Check the evidence', { text: 'Literal `$(echo hello)` source text' }, schema), { answer: 'Evidence checked' });
+    const request = JSON.parse(await readFile(capture, 'utf8'));
+    assert.match(request.input, /Literal `\$\(echo hello\)` source text/);
+    assert.match(request.input, /untrusted evidence/);
+    assert.ok(!request.args.some((arg: string) => arg.includes('Literal')));
+    assert.ok(request.args.includes('forced_login_method="chatgpt"'));
+    assert.ok(request.args.includes('read-only'));
+    assert.ok(request.args.includes('features.shell_tool=false'));
+    assert.equal(request.apiKeyPresent, false);
+    assert.notEqual(request.cwd, process.cwd());
+    assert.equal(await stat(request.cwd).then(() => true).catch(() => false), false);
+    for (const mode of ['invalid', 'malformed', 'failure', 'timeout']) {
+      process.env.CODEX_FIXTURE_MODE = mode;
+      config.codexTimeout = mode === 'timeout' ? 200 : 2000;
+      await assert.rejects(modelJson('Check', {}, schema), mode === 'timeout' ? /timed out/ : mode === 'failure' ? /usage limit/i : /JSON|invalid|expected/i);
+      const failedRequest = JSON.parse(await readFile(capture, 'utf8'));
+      assert.equal(await stat(failedRequest.cwd).then(() => true).catch(() => false), false);
+    }
+    process.env.CODEX_FIXTURE_MODE = 'api-login';
+    assert.equal((await checkCodexLogin()).ok, false);
+    await assert.rejects(modelJson('Check', {}, schema), /ChatGPT.*codex login/i);
+    assert.equal(apiCalls, 0, 'Codex failures must never fall back to paid API calls');
+    config.codexBin = path.join(directory, 'missing-codex');
+    assert.match((await checkCodexLogin()).detail, /not found.*CODEX_BIN/i);
+    await assert.rejects(modelJson('Check', {}, schema), /not found.*CODEX_BIN/i);
+  } finally {
+    Object.assign(config, saved); globalThis.fetch = originalFetch;
+    for (const key of Object.keys(process.env)) if (!(key in oldEnv)) delete process.env[key];
+    Object.assign(process.env, oldEnv); await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('API provider still uses its own endpoint and model and rejects a missing key', async () => {
+  const saved = { ...config }; const originalFetch = globalThis.fetch;
+  try {
+    config.llmProvider = 'api'; config.llmKey = '';
+    await assert.rejects(modelJson('Check', {}, z.object({ answer: z.string() })), /LLM_API_KEY/);
+    config.llmKey = 'test-key'; config.llmBase = 'https://api.example.test/v1'; config.llmModel = 'existing-api-model';
+    globalThis.fetch = async (url, init) => {
+      assert.equal(url, 'https://api.example.test/v1/chat/completions');
+      assert.equal(JSON.parse(init!.body as string).model, 'existing-api-model');
+      return Response.json({ choices: [{ message: { content: '{"answer":"API checked"}' } }] });
+    };
+    assert.deepEqual(await modelJson('Check', {}, z.object({ answer: z.string() })), { answer: 'API checked' });
+  } finally { Object.assign(config, saved); globalThis.fetch = originalFetch; }
+});

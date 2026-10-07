@@ -4,7 +4,7 @@ import { ArrowUpRight, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, C
 import { Job, Research, Inventory, Script, Transcript, QAReport, stages, stageLabels } from '@/lib/types';
 
 type Detail = { job: Job; research: Research | null; inventory: Inventory | null; script: Script | null; transcript: Transcript | null; qa: QAReport | null; };
-type Health = { worker: boolean; tts: boolean; ttsState: string; model: string; renderer: string; };
+type Health = { worker: boolean; tts: boolean; ttsState: string; model: string; modelReady: boolean; modelDetail: string; renderer: string; };
 const terminal = ['READY_FOR_REVIEW', 'APPROVED', 'SKIPPED', 'FAILED'];
 const formatTime = (seconds = 0) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
 const statusText = (status: Job['status']) => ({ READY_FOR_REVIEW: 'Ready for review', APPROVED: 'Approved', SKIPPED: 'Skipped', FAILED: 'Needs attention', RECEIVED: 'Queued' }[status as string] || 'Generating');
@@ -18,6 +18,7 @@ export default function Studio() {
   const [regenOpen, setRegenOpen] = useState(false); const [settingsOpen, setSettingsOpen] = useState(false);
   const [notice, setNotice] = useState(''); const [time, setTime] = useState(0); const [loaded, setLoaded] = useState(false);
   const input = useRef<HTMLInputElement>(null); const job = detail?.job;
+  const studioReady = !!health?.worker && !!health?.tts && health?.modelReady !== false;
   const refresh = useCallback(async () => {
     try {
       const response = await fetch('/api/jobs'); const body = await response.json();
@@ -73,14 +74,14 @@ export default function Studio() {
       <div className="local-profile"><div className="avatar">L</div><div><strong>Local workspace</strong><span>Your files stay on this machine</span></div><span className="online-dot"/></div>
     </aside>
     <main>
-      <header className="topbar"><span>Workspace <ChevronRight size={14}/> Video studio</span><div><span className={`service-dot ${health?.worker && health?.tts ? 'ok' : ''}`}/>{health?.worker && health?.tts ? 'Studio ready' : 'Setup needed'}<button className="icon-button" aria-label="Show studio settings" onClick={() => setSettingsOpen(true)}><Settings2 size={18}/></button></div></header>
+      <header className="topbar"><span>Workspace <ChevronRight size={14}/> Video studio</span><div><span className={`service-dot ${studioReady ? 'ok' : ''}`}/>{studioReady ? 'Studio ready' : 'Setup needed'}<button className="icon-button" aria-label="Show studio settings" onClick={() => setSettingsOpen(true)}><Settings2 size={18}/></button></div></header>
       <div className="workspace">
         <section className="intro"><div><h1>Your next video starts with a link.</h1><p>Turn a website or GitHub project into a story worth watching.</p></div><span className="format-pill"><Film size={15}/> Shorts & reels</span></section>
         <section className="create-panel" aria-label="Create a video">
           <form onSubmit={generate}><div className="url-field"><Link2 size={19}/><input ref={input} type="url" required maxLength={2048} value={url} onChange={e => setUrl(e.target.value)} placeholder="Paste a website or GitHub URL" aria-label="Website or GitHub URL"/><span className="url-shortcut"><Github size={16}/></span></div><button className="primary generate" disabled={busy}>{busy ? <LoaderCircle size={17} className="spin"/> : <Sparkles size={17}/>} Generate video</button></form>
           <div className="create-meta"><span><MonitorPlay size={14}/> 1080 × 1920</span><span><Clock3 size={14}/> About 60 seconds</span><span><Volume2 size={14}/> Narrated & captioned</span><span className="review-meta"><ShieldCheck size={14}/> You have the final say</span></div>
         </section>
-        {health && (!health.worker || !health.tts) && <div className="setup-banner"><Circle size={14}/><span>{!health.worker ? 'Start the video worker to process new projects.' : 'Start your local Kokoro service to generate narration.'}</span><button onClick={() => setSettingsOpen(true)}>View setup <ArrowUpRight size={13}/></button></div>}
+        {health && (!health.worker || !health.tts || !health.modelReady) && <div className="setup-banner"><Circle size={14}/><span>{!health.worker ? 'Start the video worker to process new projects.' : !health.tts ? 'Start your local Kokoro service to generate narration.' : health.modelDetail}</span><button onClick={() => setSettingsOpen(true)}>View setup <ArrowUpRight size={13}/></button></div>}
         {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
         <div className="section-heading"><div><h2>{filter === 'review' ? 'Ready for your review' : filter === 'approved' ? 'Approved videos' : 'Your videos'}</h2><span>{filtered.length} {filtered.length === 1 ? 'project' : 'projects'}</span></div><span className="autosave"><span/> Progress saved automatically</span></div>
         <section className="editor">
@@ -118,6 +119,6 @@ export default function Studio() {
       </div>
     </main>
     {notice && <div className="toast" role="status"><CheckCircle2 size={18}/>{notice}</div>}
-    {settingsOpen && <div className="modal-overlay" onClick={() => setSettingsOpen(false)}><section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={e => e.stopPropagation()}><div><h2 id="settings-title">Studio settings</h2><button className="icon-button" onClick={() => setSettingsOpen(false)} aria-label="Close settings"><X size={20}/></button></div><p>This studio uses your local browser, storage, and Kokoro speech service. Configure providers in the project’s <code>.env</code> file.</p><dl><dt>Video worker</dt><dd className={health?.worker ? 'qa-pass' : 'qa-warn'}>{health?.worker ? 'Running' : 'Offline'}</dd><dt>Kokoro narration</dt><dd className={health?.tts ? 'qa-pass' : 'qa-warn'}>{health?.ttsState || 'Checking'}</dd><dt>Research</dt><dd>{health?.model || 'Checking'}</dd><dt>Renderer</dt><dd>{health?.renderer || 'Checking'}</dd></dl><div className="setup-commands"><strong>Start the studio and worker</strong><code>npm run dev</code><strong>Start Kokoro in its own terminal</strong><code>cd ../kokoro-local-tts<br/>./run.sh</code><strong>Check dependencies</strong><code>npm run doctor</code></div><p className="muted">An optional AI provider improves scripts and exploration. The default mode uses exact source excerpts. No automatic publishing is included.</p></section></div>}
+    {settingsOpen && <div className="modal-overlay" onClick={() => setSettingsOpen(false)}><section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={e => e.stopPropagation()}><div><h2 id="settings-title">Studio settings</h2><button className="icon-button" onClick={() => setSettingsOpen(false)} aria-label="Close settings"><X size={20}/></button></div><p>This studio uses your local browser, storage, and Kokoro speech service. Configure providers in the project’s <code>.env</code> file.</p><dl><dt>Video worker</dt><dd className={health?.worker ? 'qa-pass' : 'qa-warn'}>{health?.worker ? 'Running' : 'Offline'}</dd><dt>Kokoro narration</dt><dd className={health?.tts ? 'qa-pass' : 'qa-warn'}>{health?.ttsState || 'Checking'}</dd><dt>Research</dt><dd className={health?.modelReady === false ? 'qa-warn' : ''}>{health?.model || 'Checking'}{health?.modelReady === false ? ' · Unavailable' : ''}</dd><dt>Renderer</dt><dd>{health?.renderer || 'Checking'}</dd></dl><div className="setup-commands"><strong>Start the studio and worker</strong><code>npm run dev</code><strong>Start Kokoro in its own terminal</strong><code>cd ../kokoro-local-tts<br/>./run.sh</code><strong>Check dependencies</strong><code>npm run doctor</code></div><p className="muted">AI research can use your local Codex ChatGPT login or an API provider. Source excerpt mode is also available. No automatic publishing is included.</p></section></div>}
   </div>;
 }

@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { z } from 'zod';
 import { launchBrowser, newContext, navigate, inspectPage, dismissConsent, perform, captureMode } from './browser';
 import { config } from '../lib/config';
-import { modelJson } from '../lib/llm';
+import { modelJson, modelEnabled } from '../lib/llm';
 import { jobDir } from '../lib/store';
 import { Research, Scene, Inventory, browserActionSchema } from '../lib/types';
 
@@ -17,7 +17,7 @@ export async function explore(id: string, research: Research): Promise<Inventory
         await navigate(page, source.url); await dismissConsent(page);
         const info = await inspectPage(page);
         const candidates: { title: string; actions: Scene['actions'] }[] = [{ title: 'Product overview', actions: [] }, ...info.headings.filter(h => h.y > 250).slice(0, 3).map(h => ({ title: h.text, actions: [{ type: 'scroll' as const, text: h.text, y: h.y }] }))];
-        if (config.llmKey) {
+        if (modelEnabled()) {
           try {
             const plan = await modelJson('Choose up to 2 useful public demo interactions from these headings and controls. Return {scenes:[{title,actions:[{type:"click",text,role:"button"|"tab"|"link"} or {type:"scroll",text,y}]}]}. Only use existing controls. No authentication, downloads, form submissions, purchases or writes. Omit interactions if none are safe.', info, z.object({ scenes: z.array(z.object({ title: z.string().max(120), actions: z.array(browserActionSchema).max(3) })).max(2) }));
             candidates.push(...plan.scenes);

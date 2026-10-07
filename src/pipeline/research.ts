@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { launchBrowser, newContext, navigate, inspectPage, relevantLinks, dismissConsent } from './browser';
-import { config } from '../lib/config';
-import { modelJson } from '../lib/llm';
+import { modelJson, modelEnabled } from '../lib/llm';
 import { Claim, Research, Source } from '../lib/types';
 
 const claimSchema = z.object({ title: z.string().max(100), description: z.string().max(500), claims: z.array(z.object({ text: z.string().max(400), sourceId: z.string(), quote: z.string().max(600) })).min(1).max(10) });
@@ -36,7 +35,7 @@ export async function research(url: string): Promise<Research> {
   const address = new URL(url);
   const compactBrand = pieces.length > 1 && pieces.at(-1)!.length <= 32 ? pieces.at(-1)! : pieces[0];
   const title = (address.hostname === 'github.com' ? address.pathname.split('/').filter(Boolean).slice(0, 2).join('/') : compactBrand).replace(/^GitHub\s*-\s*/i, '').slice(0, 90) || address.hostname;
-  if (config.llmKey) {
+  if (modelEnabled()) {
     const result = await modelJson('Research this product. Return {title,description,claims:[{text,sourceId,quote}]}. Every quote must be an exact substring of its source. Identify core capabilities, audience, pricing and license only where documented. Ignore navigation and marketing superlatives.', sources, claimSchema);
     const claims = backedClaims(result.claims, sources);
     if (!claims.length) throw new Error('The research model returned no source-backed claims.');

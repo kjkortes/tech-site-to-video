@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { config } from '../lib/config';
-import { modelJson } from '../lib/llm';
+import { modelJson, modelEnabled } from '../lib/llm';
 import { Research, Inventory, Script } from '../lib/types';
 
 export function validateScript(script: Script, research: Research, inventory: Inventory) {
@@ -14,8 +13,8 @@ export function validateScript(script: Script, research: Research, inventory: In
   }
 }
 export async function writeScript(research: Research, inventory: Inventory): Promise<Script> {
-  if (config.llmKey) {
-    const result = await modelJson('Write an approximately 60-second discovery video, 125–145 spoken words, 5–7 segments. Return {segments:[{text,sceneId,claimIds}]}. Every segment needs at least one claim citation, and must match a discovered visual with the same sourceId as its claims. Explain only what can actually be shown. No exaggerated opening, unsupported free/pricing claims or publishing claims.', { research, inventory }, z.object({ segments: z.array(z.object({ text: z.string().min(1).max(800), sceneId: z.string(), claimIds: z.array(z.string()).min(1) })).min(3).max(8) }));
+  if (modelEnabled()) {
+    const result = await modelJson('Write an approximately 60-second discovery video, 125–145 spoken words, 5–7 segments. Return {segments:[{text,sceneId,claimIds}]}. Every segment needs at least one claim citation, and must match a discovered visual with the same sourceId as its claims. Every factual clause must be directly supported by the cited claim.quote text. Claim summaries, scene titles and uncited source text are not evidence for narration. Do not add benefits, purposes or evaluations beyond those quotes. Describe capabilities without asserting website section names or page locations unless the quotes explicitly establish them. Explain only what can actually be shown. Avoid repeated points, exaggerated openings, unsupported free/pricing claims or publishing claims.', { research, inventory }, z.object({ segments: z.array(z.object({ text: z.string().min(1).max(800), sceneId: z.string(), claimIds: z.array(z.string()).min(1) })).min(3).max(8) }));
     const script: Script = { title: research.title, mode: 'model', segments: result.segments.map((s, i) => ({ ...s, id: `segment-${i + 1}` })) };
     validateScript(script, research, inventory); return script;
   }
