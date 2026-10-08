@@ -42,6 +42,23 @@ test('shot timing covers initial silence, speech pauses and final audio exactly'
   assert.equal(shots[1].start, 3.6); assert.equal(shots[1].start + shots[1].duration, transcript.duration);
   assert.equal(shots.reduce((sum, s) => sum + s.duration, 0), transcript.duration);
 });
+test('GitHub videos open on the README overview while retaining later sourced scenes and voice timing', () => {
+  const overview = { ...inventory.scenes[0], url: 'https://github.com/storytold/photocraft', title: 'Product overview' };
+  const feature = { ...overview, id: 'scene-2', title: 'Features', actions: [{ type: 'scroll' as const, text: 'Features', y: 3000 }] };
+  const otherOverview = { ...overview, id: 'scene-3', sourceId: 'source-2', url: 'https://github.com/other/repo' };
+  const scenes = { notes: [], scenes: [otherOverview, overview, feature] };
+  const transcript: Transcript = { duration: 20, timingSource: 'kokoro', words: [], segments: [
+    { ...script.segments[0], sceneId: feature.id, start: 0.2, end: 9.5 },
+    { ...script.segments[0], id: 'seg-2', sceneId: feature.id, start: 10, end: 20 },
+  ] };
+  const shots = direct(transcript, scenes);
+  assert.equal(shots[0].sceneId, overview.id);
+  assert.deepEqual(shots[0].actions, []);
+  assert.equal(shots[0].duration, 10);
+  assert.equal(shots[1].sceneId, feature.id);
+  assert.deepEqual(shots[1].actions, feature.actions);
+  assert.equal(shots[1].start + shots[1].duration, 20);
+});
 test('caption chunks retain word timing and normalize timestamp carry', () => {
   const transcript: Transcript = { duration: 62, timingSource: 'kokoro', segments: [], words: [{ text: 'Hello', start: 59.9996, end: 60.5 }, { text: 'world.', start: 60.5, end: 61 }] };
   const captions = captionChunks(transcript);

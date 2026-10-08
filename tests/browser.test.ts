@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { launchBrowser, newContext, perform, matchesCapture, viewport } from '../src/pipeline/browser';
+import { launchBrowser, newContext, navigate, perform, matchesCapture, viewport } from '../src/pipeline/browser';
 import { pagePanel } from '../src/pipeline/video-layout';
 import { probe, run } from '../src/lib/process';
 
@@ -54,5 +54,42 @@ test('capture migration replaces mobile and outdated desktop clips', () => {
   assert.equal(matchesCapture({ captureMode: 'mobile', captureViewport: { width: 390, height: 484 } }), false);
   assert.equal(matchesCapture({ captureMode: 'desktop' }), false);
   assert.equal(matchesCapture({ captureMode: 'desktop', captureViewport: { width: 1000, height: 1240 } }), false);
-  assert.equal(matchesCapture({ captureMode: 'desktop', captureViewport: { ...viewport } }), true);
+  assert.equal(matchesCapture({ captureMode: 'desktop', captureViewport: { ...viewport } }), false, 'Old captures still include GitHub chrome');
+  assert.equal(matchesCapture({ captureMode: 'desktop', captureViewport: { ...viewport }, captureRevision: 2 }), true);
+});
+
+test('GitHub captures frame the README opening and reclaim the right sidebar space', async () => {
+  const browser = await launchBrowser();
+  try {
+    const context = await newContext(browser);
+    const fixture = `<!doctype html><title>PhotoCraft</title><style>
+      body{margin:0} .layout{display:grid;grid-template-columns:952px 328px}
+      [data-component="SplitPageLayout.Content"]{min-width:0}
+      [data-width="large"]{max-width:952px} article{margin:32px;max-width:1012px}
+      .files{height:2800px} .hero{height:600px;background:steelblue}
+    </style><div class="layout">
+      <div data-component="SplitPageLayout.Content"><div data-width="large">
+        <div class="files">Repository files</div><article class="markdown-body">
+          <p>ARTCRAFT</p><h1>PhotoCraft</h1><p>Image editing in Rust.</p>
+          <div class="hero">The Great Wave screenshot</div><div style="height:3000px"></div><h2 id="features">Features</h2><div style="height:2500px"></div>
+        </article></div></div>
+      <div data-position="end"><div data-component="SplitPageLayout.Pane">About · Languages</div></div>
+    </div>`;
+    await context.route('**/*', route => route.fulfill({ contentType: 'text/html', body: fixture }));
+    const page = await context.newPage();
+    await navigate(page, 'https://github.com/storytold/photocraft');
+    assert.equal(await page.locator('[data-component="SplitPageLayout.Pane"]').isVisible(), false);
+    const article = await page.locator('article').boundingBox();
+    assert.ok(article && article.width >= 1100, `README must fill the space reclaimed from the sidebar: ${article?.width}`);
+    assert.ok(article && article.y >= 0 && article.y <= 100, `README opening should be at the top: ${article?.y}`);
+    const hero = await page.locator('.hero').boundingBox();
+    assert.ok(hero && hero.y > 0 && hero.y + hero.height < viewport.height, 'Opening screenshot must be in frame');
+    await perform(page, { type: 'scroll', text: 'PhotoCraft' });
+    assert.ok((await page.locator('article').boundingBox())!.y >= 0, 'Scrolling to the product title must retain its opening logo');
+    await navigate(page, 'https://github.com/storytold/photocraft#features');
+    assert.ok(Math.abs((await page.locator('#features').boundingBox())!.y) < 150, 'Explicit README section links must keep their target');
+    await navigate(page, 'https://example.com/');
+    assert.equal(await page.locator('[data-component="SplitPageLayout.Pane"]').isVisible(), true, 'Other websites keep their original layout');
+    assert.equal(await page.evaluate(() => scrollY), 0);
+  } finally { await browser.close(); }
 });

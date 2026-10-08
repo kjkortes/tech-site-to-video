@@ -65,7 +65,7 @@ export async function runPipeline(id: string) {
         inventory = await refreshInventoryCapture(id, inventory);
         await writeArtifact(id, 'inventory.json', inventory);
         // Preserve the sourced script, speech, and shot timings; recapture only visuals.
-        await invalidate(job, 'RECORDING');
+        await invalidate(job, 'DIRECTING');
         refreshingCapture = false;
       }
       const script = await stage<Script>('SCRIPTING', 'script.json', () => writeScript(facts, inventory));
