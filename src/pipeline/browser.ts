@@ -1,6 +1,6 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { validatePublicUrl } from '../lib/network';
-import { BrowserAction } from '../lib/types';
+import { BrowserAction, WalkLocation } from '../lib/types';
 import { config } from '../lib/config';
 import { videoLayout } from './video-layout';
 
@@ -79,6 +79,19 @@ export async function dismissConsent(page: Page) {
     if (await button.isVisible().catch(() => false)) { await button.click({ timeout: 1500 }).catch(() => {}); break; }
   }
 }
+export async function sectionScrollTarget(page: Page, location: WalkLocation) {
+  const locators=[...(location.selector?[page.locator(location.selector).filter({visible:true}).first()]:[]),page.getByRole('heading',{name:location.heading,exact:true}).filter({visible:true}).first()];
+  for(const target of locators) try {if(await target.count())return await target.evaluate(el=>Math.max(0,Math.min(document.documentElement.scrollHeight-innerHeight,el.getBoundingClientRect().top+scrollY-80)));}catch{/* DOM changes use semantic heading or stored position. */}
+  return page.evaluate(y=>Math.max(0,Math.min(document.documentElement.scrollHeight-innerHeight,y)),location.scrollY);
+}
+export async function positionAtSection(page: Page, location: WalkLocation) {
+  const y=await sectionScrollTarget(page,location);await page.evaluate(y=>scrollTo({top:y,behavior:'instant'}),y);return y;
+}
+export async function scrollToSection(page: Page, location: WalkLocation, duration: number) {
+  const destination=await sectionScrollTarget(page,location),milliseconds=Math.min(2,Math.max(.3,duration))*1000;
+  // Seek to a stored origin before recording; this exact easing is the only visible navigation.
+  await page.evaluate(`new Promise(resolve=>{const start=scrollY,begin=performance.now();function step(now){const t=Math.min(1,(now-begin)/${milliseconds});const eased=t*t*(3-2*t);scrollTo({top:start+(${destination}-start)*eased,behavior:'instant'});if(t<1)requestAnimationFrame(step);else resolve();}requestAnimationFrame(step);})`);
+}
 const unsafeInteraction = /delete|remove|purchase|checkout|pay\b|subscribe|sign.?up|log.?in|sign.?in|authorize|publish|deploy|send|submit|install|download|start free|create account|buy|connect|accept all/i;
 export async function perform(page: Page, action: BrowserAction) {
   if (action.type === 'scroll') {
@@ -123,7 +136,7 @@ export async function perform(page: Page, action: BrowserAction) {
 }
 export async function inspectPage(page: Page) {
   return page.evaluate(() => {
-    const main = document.querySelector('article.markdown-body, article, main, [role="main"]') || document.body;
+    const main = document.querySelector('article.markdown-body') || document.querySelector('article, main, [role="main"]') || document.body;
     const clone = main.cloneNode(true) as HTMLElement;
     clone.querySelectorAll('script, style, nav, footer, header, svg').forEach(e => e.remove());
     return {
@@ -139,13 +152,15 @@ export async function inspectPage(page: Page) {
 }
 export function relevantLinks(url: string, links: { text: string; href: string }[]) {
   const initial = new URL(url);
+  const seen=new Set<string>();
   return links.filter(link => {
     try {
       const target = new URL(link.href);
+      if(seen.has(target.href))return false;seen.add(target.href);
       if (target.origin !== initial.origin || target.href.split('#')[0] === initial.href.split('#')[0]) return false;
       if (initial.hostname === 'github.com') {
         const repo = initial.pathname.split('/').slice(0, 3).join('/');
-        return target.pathname.startsWith(`${repo}/`) && !/\/issues|\/pulls|\/actions|\/releases|\/login/.test(target.pathname);
+        return target.pathname.startsWith(`${repo}/`) && !/\/commit|\/compare|\/branches|\/tags|\/issues|\/pulls|\/actions|\/releases|\/login/.test(target.pathname);
       }
       return !unsafeInteraction.test(link.text);
     } catch { return false; }

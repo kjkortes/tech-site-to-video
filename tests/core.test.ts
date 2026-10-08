@@ -52,7 +52,7 @@ test('GitHub context-only inventories retain source identity and bounded narrati
     { ...script.segments[0], id: 'seg-2', sceneId: feature.id, start: 10, end: 20 },
   ] };
   const shots = direct(transcript, scenes);
-  assert.equal(shots[0].sceneId, overview.id);
+  assert.equal(shots[0].sceneId, feature.id, 'Context-only opening retains its actual narrated section');
   assert.deepEqual(shots[0].actions, []);
   assert.ok(shots.every(s=>s.duration <= 4.5));
   assert.ok(shots.some(s=>s.sceneId === feature.id));

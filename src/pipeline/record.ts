@@ -2,7 +2,7 @@ import path from 'node:path';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { Inventory, Shot, ShotResult } from '../lib/types';
 import { jobDir, readArtifact, writeArtifact } from '../lib/store';
-import { launchBrowser, newContext, navigate, dismissConsent, perform, consentObscuresPage, captureMode, captureRevision, viewport, matchesCapture } from './browser';
+import { launchBrowser, newContext, navigate, dismissConsent, perform, consentObscuresPage, captureMode, captureRevision, viewport, matchesCapture, positionAtSection, scrollToSection } from './browser';
 import { probe, run } from '../lib/process';
 import { createHash } from 'node:crypto';
 import { assetsFor } from './direct';
@@ -25,7 +25,7 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
         if (info && Number(info.format.duration) >= previous.trimStart + shot.duration - 0.2) { results.push(previous); continue; }
       }
       let result: ShotResult | undefined; let lastError = '';
-      const assetShot = shot.type && !['establish', 'scroll_to', 'click_demo'].includes(shot.type);
+      const assetShot = shot.type && !['walkthrough', 'establish', 'scroll_to', 'click_demo'].includes(shot.type);
       if (assetShot) {
         for (let attempt = 1; attempt <= 2; attempt++) {
           await onProgress(`Capturing ${shot.type} shot ${shot.id} of ${shots.length}${attempt > 1 ? ' · retrying' : ''}`);
@@ -74,13 +74,17 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
             await navigate(page, shot.url); await dismissConsent(page);
             const liveClick = shot.type === 'click_demo' ? shot.actions.findLast(a => a.type === 'click') : undefined;
             for (const action of shot.actions) if (action !== liveClick) await perform(page, action);
+            if(shot.type==='walkthrough' && shot.walkthrough) await positionAtSection(page,shot.walkthrough.transition?.from||shot.walkthrough.location);
             await page.waitForTimeout(600);
             const trimStart = (Date.now() - opened) / 1000;
             const pageTitle = await page.title();
             const consentObscured = await consentObscuresPage(page);
             if (consentObscured) throw new Error('Consent dialog obscures the source');
             if (liveClick) await perform(page, liveClick);
-            if (shot.type === 'scroll_to') {
+            if(shot.type==='walkthrough' && shot.walkthrough?.transition) {
+              await scrollToSection(page,shot.walkthrough.location,shot.walkthrough.transition.duration);
+              await page.waitForTimeout(Math.max(0,shot.duration-shot.walkthrough.transition.duration+.7)*1000);
+            } else if (shot.type === 'scroll_to') {
               const startY = await page.evaluate(() => scrollY);
               const travel = await page.evaluate(() => Math.max(0, Math.min(300, document.documentElement.scrollHeight - innerHeight - scrollY)));
               const ticks = Math.max(1, Math.ceil(Math.min(3, shot.duration) * 30));

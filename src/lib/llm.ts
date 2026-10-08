@@ -16,13 +16,17 @@ export function currentModelSettings(): ModelSettings {
   const provider = configuredModelProvider();
   return { provider, ...environmentModelDefaults(provider) };
 }
-export function creativeInstruction() {
+export type ModelTask = 'research' | 'mapping' | 'navigation' | 'visual' | 'script' | 'motion' | 'qa';
+export function creativeInstruction(task: ModelTask = 'script') {
+  if (['research','mapping','qa'].includes(task)) return 'Task profile: high precision, low variance. Extract and verify literal evidence. No creative additions or stylistic reinterpretation.';
+  if (['navigation','visual'].includes(task)) return 'Task profile: restrained navigation. Preserve document order and the active section. Choose local contextual visuals. Never create unexpected jumps for variety; hold when that best supports continuity.';
+  if (task === 'motion') return 'Task profile: balanced attention direction. Use subtle movement only when it clarifies the current content; a static shot is valid.';
   const directions = {
-    restrained: 'Keep storytelling direct and explanatory. Prefer clear literal source demonstrations and conservative framing.',
-    balanced: 'Use an engaging concrete hook, varied relevant visuals, and purposeful close-ups while keeping the story easy to follow.',
-    bold: 'Use inventive source-grounded storytelling: an unexpected concrete hook, fresh visual sequencing, and expressive but purposeful reframing. Avoid decorative effects.',
+    restrained: 'Keep narration direct, concise and explanatory, with literal source-backed descriptions.',
+    balanced: 'Use an engaging product-first hook, natural connective phrasing and a concise useful takeaway within the supplied walkthrough.',
+    bold: 'Use inventive source-grounded hook wording and vivid, economical explanations within the supplied walkthrough. Keep the product-first opening and fixed visit order.',
   };
-  return `Creative direction: ${directions[currentModelSettings().creativity]} Creativity changes presentation only; all factual claims, UI locations, and diagrams still require evidence. Preserve every timing, safety, and visual validation constraint.`;
+  return `Script creativity: ${directions[currentModelSettings().creativity]} Creativity changes wording only; every factual claim requires evidence. Never change the outline, navigation or section ownership.`;
 }
 
 export function modelProvider(): 'api' | 'codex' | 'extractive' {
@@ -106,7 +110,8 @@ async function codexJson<T>(instruction: string, evidence: unknown, schema: z.Zo
   } finally { await rm(directory, { recursive: true, force: true }); }
 }
 
-export async function modelJson<T>(instruction: string, evidence: unknown, schema: z.ZodType<T>, images: string[] = []): Promise<T> {
+export async function modelJson<T>(instruction: string, evidence: unknown, schema: z.ZodType<T>, images: string[] = [], task: ModelTask = 'research'): Promise<T> {
+  instruction += ` ${creativeInstruction(task)}`;
   const provider = modelProvider();
   if (provider === 'codex') return codexJson(instruction, evidence, schema, images);
   if (provider === 'extractive') throw new Error('No research model configured');
@@ -114,7 +119,7 @@ export async function modelJson<T>(instruction: string, evidence: unknown, schem
   const attachments = await Promise.all(images.map(async file => ({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${(await readFile(file)).toString('base64')}`, detail: 'high' } })));
   const response = await fetch(`${config.llmBase}/chat/completions`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.llmKey}` },
-    body: JSON.stringify({ model: currentModelSettings().model || config.llmModel, temperature: 0.3, response_format: { type: 'json_object' }, messages: [
+    body: JSON.stringify({ model: currentModelSettings().model || config.llmModel, temperature: task === 'script' ? ({ restrained: .25, balanced: .45, bold: .65 }[currentModelSettings().creativity]) : task === 'motion' ? .3 : .1, response_format: { type: 'json_object' }, messages: [
       { role: 'system', content: `${groundedInstructions} ${instruction}` },
       { role: 'user', content: attachments.length ? [{ type: 'text', text: JSON.stringify(evidence) }, ...attachments] : JSON.stringify(evidence) },
     ] }), signal: AbortSignal.timeout(90000),

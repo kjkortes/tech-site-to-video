@@ -35,6 +35,6 @@ export function ModelControls({ value, onChange, models, provider, disabled = fa
     <div className="model-field"><label htmlFor={`${id}-creativity`}>Creative direction</label><select id={`${id}-creativity`} value={value.creativity} onChange={e => onChange({ ...value, creativity: e.target.value as ModelOptions['creativity'] })}>
       {creativeDirections.map(direction => <option key={direction} value={direction}>{creativityLabels[direction]}</option>)}
     </select></div>
-    <p className="model-help">{provider === 'codex' ? 'More effort gives the model room for deeper planning and may take longer. Creative direction guides the story and visuals; factual checks always apply.' : provider === 'api' ? 'Use a model ID from your API provider. Reasoning effort is currently available for Codex.' : 'Source excerpt mode does not use a GPT model.'}</p>
+    <p className="model-help">{provider === 'codex' ? 'More effort allows deeper planning and may take longer. Creative direction controls script wording; research, navigation, visual selection and QA stay precise and follow the document.' : provider === 'api' ? 'Use a model ID from your API provider. Creativity controls script wording; navigation stays restrained. Reasoning effort is currently available for Codex.' : 'Source excerpt mode does not use a GPT model.'}</p>
   </fieldset>;
 }

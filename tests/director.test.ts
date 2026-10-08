@@ -14,7 +14,7 @@ test('director opens with standalone README media and maps every beat to purpose
   const shots = direct(transcript, inventory);
   assert.equal(shots[0].assetId, 'layers');
   assert.equal(shots[0].type, 'media_fullscreen');
-  assert.ok(shots.some(s => s.type === 'zoom_region'));
+  assert.ok(shots.some(s => s.walkthrough?.role === 'return'));
   assert.ok(shots.some(s => s.assetId === 'output' && s.segmentId === 'seg-2'));
   assert.ok(shots.every(s => s.duration <= 4.5 && s.purpose && s.segmentId));
   assert.equal(shots[0].start, 0);
@@ -25,7 +25,7 @@ test('director opens with standalone README media and maps every beat to purpose
 test('visible scrolling is explicit, bounded and never consecutive', async () => {
   const { repairPlan, validatePlan } = await import('../src/pipeline/direct');
   const base = direct(transcript, inventory);
-  const repetitive = base.map(s => ({ ...s, assetId: 'scene-1', type: 'scroll_to' as const, framing: 'context' as const }));
+  const repetitive = base.map(s => ({ ...s, walkthrough: undefined, assetId: 'scene-1', type: 'scroll_to' as const, framing: 'context' as const }));
   const broken = validatePlan(repetitive, inventory, transcript);
   assert.equal(broken.passed, false);
   assert.ok(broken.issues.some(i => i.code === 'consecutive-scroll'));
@@ -61,7 +61,7 @@ test('model director rejects fabricated visuals and falls back to an executable 
     const plan=await visualDirector(transcript,inventory,{title:'Fixture',description:'',mode:'extractive',claims:[],sources:[]});
     assert.ok(plan.diagnostics.passed); assert.ok(plan.notes.some(n=>n.includes('unknown')));
     assert.equal(plan.shots[0].assetId,'layers');
-    assert.equal(plan.shots[2].assetId,'output'); assert.equal(plan.shots[2].focus,undefined,'Changing source must clear the previous asset crop');
+    assert.equal(plan.shots[2].assetId,'scene-1','Model must retain the locked browser visit'); assert.ok(plan.notes.some(n=>n.includes('continuity-breaking')));
   } finally {Object.assign(config,original);globalThis.fetch=fetch;}
 });
 test('diagram relationships require cited quotes and narrated labels', async()=>{

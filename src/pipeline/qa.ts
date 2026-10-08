@@ -9,12 +9,13 @@ import { validateScript } from './script';
 import { directedCaptions } from './captions';
 
 import { validatePlan } from './direct';
+import { validateContinuity } from './walkthrough';
 import { shotSignature } from './record';
 import { panelFor } from './video-layout';
 import { captionAnchor } from './captions';
 
 export async function auditScript(script: Script, research: Research) {
-  return modelJson('Independently audit each narration segment against its cited source quotes. Return {supported:boolean,issues:[string]}. Every factual assertion must be entailed by its cited quotes. Reject added claims about price, licenses, capabilities, benefits, purposes, or website locations. Evaluate the actual words asserted, not stronger statements the narration does not make. Lists introduced by "includes", "such as", or "examples" are non-exhaustive: naming three examples does not assert that there are exactly or only three in total. Conversely, "only", "exactly", and exhaustive totals require explicit evidence. Accept faithful paraphrases and literal counts of explicitly named items. Report specific unsupported assertions, not speculative implications or stylistic preferences.', { script, claims: research.claims }, z.object({ supported: z.boolean(), issues: z.array(z.string()) }));
+  return modelJson('Independently audit each narration segment against its cited source quotes. Return {supported:boolean,issues:[string]}. Every factual assertion must be entailed by its cited quotes. Reject added claims about price, licenses, capabilities, benefits, purposes, or website locations. Evaluate the actual words asserted, not stronger statements the narration does not make. Lists introduced by "includes", "such as", or "examples" are non-exhaustive: naming three examples does not assert that there are exactly or only three in total. Conversely, "only", "exactly", and exhaustive totals require explicit evidence. Accept faithful paraphrases and literal counts of explicitly named items. Report specific unsupported assertions, not speculative implications or stylistic preferences.', { script, claims: research.claims }, z.object({ supported: z.boolean(), issues: z.array(z.string()) }),[], 'qa');
 }
 
 export async function checkVideo(id: string, research: Research, inventory: Inventory, script: Script, transcript: Transcript, shots: Shot[], recordings: ShotResult[]): Promise<QAReport> {
@@ -32,6 +33,8 @@ export async function checkVideo(id: string, research: Research, inventory: Inve
   add('audio', 'Narration track', !!audio, audio ? `Audio encoded as ${audio.codec_name}` : 'No audio stream found');
   add('delivery', '30fps and AAC 48kHz delivery', video?.avg_frame_rate === '30/1' && audio?.codec_name === 'aac' && audio?.sample_rate === '48000', `${video?.avg_frame_rate}fps / ${audio?.codec_name} ${audio?.sample_rate}Hz`);
   const diversity = validatePlan(shots, inventory, transcript);
+  const continuity=validateContinuity(shots,inventory,transcript);
+  add('walkthrough','Document walkthrough continuity',continuity.passed,`Continuity ${continuity.score}/100; browser ${(100*continuity.browserDuration/transcript.duration).toFixed(0)}%. ${continuity.issues.map(i=>i.detail).join('; ')}`);
   add('visual-plan', 'Visual direction and diversity', diversity.passed, `Diversity ${diversity.score}/100; visible scroll ${diversity.scrollDuration.toFixed(1)}s. ${diversity.issues.map(i => i.detail).join('; ')}`);
   add('shot-signatures', 'Planned captures match selected visuals', shots.every(s => recordings.find(r=>r.id===s.id)?.signature === shotSignature(s)), 'Capture checkpoints match exact visual intent');
   add('consent', 'Content is unobscured', recordings.every(r => !r.consentObscured), 'Consent overlays rejected during clean browser capture');
@@ -70,7 +73,7 @@ export async function checkVideo(id: string, research: Research, inventory: Inve
   }
   const diagrams = shots.filter(s => s.type === 'diagram').map(s => ({ shotId: s.id, diagram: s.diagram, narration: transcript.segments.find(b=>b.id===s.segmentId)?.text }));
   if (diagrams.length && modelEnabled()) {
-    const verdict = await modelJson('Audit these diagrams against research quotes. Every directed edge must be explicitly entailed by its cited evidence. Reject guessed architecture, causal direction, or unsupported nodes. Return {supported,issues}.', { diagrams, claims: research.claims }, z.object({ supported: z.boolean(), issues: z.array(z.string()) }));
+    const verdict = await modelJson('Audit these diagrams against research quotes. Every directed edge must be explicitly entailed by its cited evidence. Reject guessed architecture, causal direction, or unsupported nodes. Return {supported,issues}.', { diagrams, claims: research.claims }, z.object({ supported: z.boolean(), issues: z.array(z.string()) }),[], 'qa');
     add('diagram-evidence', 'Diagram relationships are source-backed', verdict.supported, verdict.issues.join('; ') || 'Diagram audit passed');
   }
   add('vision', 'Frame meaning', false, 'Pixel-level semantic review is not configured. Review the final footage before approval.', 'warning');

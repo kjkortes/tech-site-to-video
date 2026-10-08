@@ -1,42 +1,52 @@
 import { z } from 'zod';
-import { modelJson, modelEnabled, creativeInstruction } from '../lib/llm';
-import { Research, Inventory, Script } from '../lib/types';
+import { modelJson, modelEnabled } from '../lib/llm';
+import type { Research, Inventory, Script, StoryOutline } from '../lib/types';
+import { buildOutline, storyRevision } from './story';
+import { pagesFor } from './document-map';
 
 export function validateScript(script: Script, research: Research, inventory: Inventory) {
+  let previousPage=-1, previousSection=-1;
+  const pages=pagesFor(inventory);
   for (const segment of script.segments) {
+    if(script.revision===storyRevision && (!segment.sectionId || !segment.visitId)) throw new Error('Walkthrough narration must retain its section and visit identity');
     const scene = inventory.scenes.find(s => s.id === segment.sceneId);
     if (!scene) throw new Error(`Narration has no discovered visual: ${segment.id}`);
     if (segment.claimIds.some(id => !research.claims.some(c => c.id === id))) throw new Error('Narration references an unknown claim');
     if (segment.claimIds.some(id => research.claims.find(c => c.id === id)?.sourceId !== scene.sourceId)) throw new Error('Narration is paired with footage from a different source');
     if (!segment.text.trim()) throw new Error('Empty narration segment');
     if (script.mode === 'model' && !segment.claimIds.length) throw new Error('Model narration must cite at least one researched claim per segment');
+    if(segment.sectionId) {
+      const page=pages.find(p=>p.sections.some(s=>s.id===segment.sectionId)); const section=page?.sections.find(s=>s.id===segment.sectionId);
+      if(!page || !section || scene.sectionId!==section.id) throw new Error('Narration has no matching document section');
+      if(page.order<previousPage || page.order===previousPage && section.order<previousSection) throw new Error('Narration conflicts with document order; regenerate script');
+      const normal=(s:string)=>s.replace(/\s+/g,' ').trim().toLowerCase();
+      if(segment.claimIds.some(id=>!normal(section.text).includes(normal(research.claims.find(c=>c.id===id)!.quote)))) throw new Error('Narration cites evidence from a different section');
+      previousPage=page.order;previousSection=section.order;
+    }
   }
+  if(script.revision===storyRevision && !script.segments[0]?.text.toLowerCase().startsWith(`this is ${script.title.toLowerCase()},`)) throw new Error('Opening must immediately identify the product: This is [PRODUCT], [description].');
 }
-export async function writeScript(research: Research, inventory: Inventory): Promise<Script> {
+export async function writeScript(research: Research, inventory: Inventory, outline?: StoryOutline): Promise<Script> {
+  outline ||= await buildOutline(research,inventory);
+  let segments: Script['segments'];
   if (modelEnabled()) {
-    const result = await modelJson('Write an approximately 60-second discovery video, 125–145 spoken words, 5–7 segments. Return {segments:[{text,sceneId,claimIds}]}. Open with a concrete intriguing capability or result supported by a cited quote and available product imagery, then introduce the project identity. Put implementation language and installation later when they are not the strongest hook. Every segment needs at least one claim citation, and must match a discovered visual with the same sourceId as its claims. Every factual clause must be directly supported by the cited claim.quote text. Claim summaries, scene titles and uncited source text are not evidence for narration. Do not add benefits, purposes or evaluations beyond those quotes. Describe capabilities without asserting website section names or page locations unless the quotes explicitly establish them. Explain only what can actually be shown. Avoid repeated points, exaggerated openings, unsupported free/pricing claims or publishing claims.' + ' ' + creativeInstruction(), { research, inventory }, z.object({ segments: z.array(z.object({ text: z.string().min(1).max(800), sceneId: z.string(), claimIds: z.array(z.string()).min(1) })).min(3).max(8) }));
-    const script: Script = { title: research.title, mode: 'model', segments: result.segments.map((s, i) => ({ ...s, id: `segment-${i + 1}` })) };
-    validateScript(script, research, inventory); return script;
+    const result = await modelJson('Write a coherent guided walkthrough, approximately 60 seconds and 125–145 words. Return {segments:[{visitId,text,claimIds}]}, EXACTLY one segment per supplied visit, in that order. The first spoken sentence MUST start "This is [exact product title]," followed immediately by a clear sourced description/value proposition. No branding VO, capability list before the product, or filler such as "Here is a look", "Today", "this repository", or "let us take a look". Explain the product immediately, then walk through the selected sections with natural connective wording. Discuss each section only using its assigned quotes. Do not make factual claims about scrolling, page locations, or clicking; navigation need not be narrated. Code is discussed only for CLI, APIs, installation, configuration, or architecture. Finish the final visit with a brief useful sourced takeaway or caveat, not a long CTA or unsupported endorsement. Every factual clause must be entailed by its cited quotes. Do not add benefits, pricing, evaluations, or guessed architecture. Creativity belongs in wording, never in changing visit order.',
+      {product:research.title,visits:outline.visits.map(v=>({...v,quotes:research.claims.filter(c=>v.claimIds.includes(c.id)),section:pagesFor(inventory).flatMap(p=>p.sections).find(s=>s.id===v.sectionId)?.heading}))},
+      z.object({segments:z.array(z.object({visitId:z.string(),text:z.string().min(1).max(1000),claimIds:z.array(z.string()).min(1)})).min(1).max(7)}),[], 'script');
+    if(result.segments.length!==outline.visits.length || result.segments.some((s,i)=>s.visitId!==outline!.visits[i].id || s.claimIds.some(id=>!outline!.visits[i].claimIds.includes(id)))) throw new Error('Script changed the walkthrough visits or their evidence');
+    segments=result.segments.map((s,i)=>({...s,id:`segment-${i+1}`,sceneId:outline!.visits[i].sceneId,sectionId:outline!.visits[i].sectionId}));
+  } else {
+    segments=outline.visits.map((visit,i)=>{
+      const claim=research.claims.find(c=>c.id===visit.claimIds[0])!;
+      let text=claim.quote;
+      if(i===0) {
+        const escaped=research.title.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+        const description=text.replace(new RegExp(`^${escaped}\\s+(?:is|:)\\s+`,'i'),'');
+        text=`This is ${research.title}, ${description.charAt(0).toLowerCase()}${description.slice(1)}`;
+      }
+      return {id:`segment-${i+1}`,visitId:visit.id,sectionId:visit.sectionId,sceneId:visit.sceneId,text,claimIds:[claim.id]};
+    });
   }
-  // Offline mode only narrates exact source excerpts, plus an explicitly attributed introduction.
-  const usable = research.claims.filter(c => inventory.scenes.some(s => s.sourceId === c.sourceId));
-  const segments: Script['segments'] = [];
-  let count = 0;
-  for (const claim of usable) {
-    const sourceScenes = inventory.scenes.filter(s => s.sourceId === claim.sourceId);
-    const keywords = new Set(claim.quote.toLowerCase().split(/\W+/).filter(w => w.length > 4));
-    const score = (text: string) => text.toLowerCase().split(/\W+/).filter(w => keywords.has(w)).length;
-    const scene = [...sourceScenes].sort((a, b) => score(b.description) - score(a.description))[0];
-    const text = segments.length === 0 ? `Here's a look at ${research.title}. The project's website describes it this way: ${claim.quote}` : claim.quote;
-    const words = text.split(/\s+/).length;
-    if (count + words > 150 && segments.length >= 3) break;
-    segments.push({ id: `segment-${segments.length + 1}`, text, sceneId: scene.id, claimIds: [claim.id] });
-    count += words;
-    if (count >= 130 || segments.length >= 7) break;
-  }
-  if (!segments.length) throw new Error('No claims could be matched to discovered visuals');
-  const last = inventory.scenes[0];
-  segments.push({ id: `segment-${segments.length + 1}`, text: 'Visit the project to explore the documentation and decide whether it fits your workflow.', sceneId: last.id, claimIds: [] });
-  const script: Script = { title: research.title, mode: 'extractive', segments };
-  validateScript(script, research, inventory); return script;
+  const script:Script={title:research.title,mode:modelEnabled()?'model':'extractive',revision:storyRevision,outline,segments};
+  validateScript(script,research,inventory);return script;
 }

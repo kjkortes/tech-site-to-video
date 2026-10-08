@@ -4,7 +4,8 @@ import { withJobLock } from '../lib/lock';
 import { research } from './research';
 import { explore, refreshInventoryCapture } from './explore';
 import { captureMode, matchesCapture } from './browser';
-import { writeScript } from './script';
+import { mapRevision } from './document-map';
+import { writeScript, validateScript } from './script';
 import { generateSpeech } from './tts';
 import { direct, visualDirector, directorRevision, validatePlan } from './direct';
 import { recordShots, shotSignature } from './record';
@@ -16,6 +17,8 @@ import path from 'node:path';
 import { jobDir } from '../lib/store';
 import { resolveModelSettings } from '../lib/model-settings';
 import { withModelSettings } from '../lib/llm';
+import { buildOutline, storyRevision } from './story';
+import { validateContinuity } from './walkthrough';
 
 export async function runPipeline(id: string) {
   return withJobLock(id, async () => {
@@ -64,7 +67,7 @@ export async function runPipeline(id: string) {
       const facts = await stage<Research>('RESEARCHING', 'research.json', () => research(job.url));
       job.title = facts.title; await saveJob(job);
       let inventory = await stage<Inventory>('EXPLORING', 'inventory.json', () => explore(id, facts));
-      if (!matchesCapture(inventory) || inventory.directorRevision !== directorRevision) {
+      if (!matchesCapture(inventory) || inventory.directorRevision !== directorRevision || inventory.mapRevision !== mapRevision) {
         refreshingCapture = true;
         active = 'EXPLORING'; job.status = 'EXPLORING';
         event(job, `Refreshing ${captureMode} browser visuals`); await saveJob(job);
@@ -74,8 +77,26 @@ export async function runPipeline(id: string) {
         await invalidate(job, 'DIRECTING');
         refreshingCapture = false;
       }
-      const script = await stage<Script>('SCRIPTING', 'script.json', () => writeScript(facts, inventory));
+      await writeArtifact(id,'page-map.json',inventory.pages);
+      const savedScript=await readArtifact<Script>(id,'script.json').catch(()=>null);
+      let scriptNeedsRefresh=!!savedScript && savedScript.revision!==storyRevision;
+      if(savedScript?.revision===storyRevision) {
+        for(const segment of savedScript.segments) segment.sectionId=inventory.scenes.find(s=>s.id===segment.sceneId)?.sectionId;
+        if(savedScript.outline) for(const visit of savedScript.outline.visits) visit.sectionId=savedScript.segments.find(s=>s.visitId===visit.id)?.sectionId||visit.sectionId;
+        try {validateScript(savedScript,facts,inventory);await writeArtifact(id,'script.json',savedScript);}catch{scriptNeedsRefresh=true;}
+      }
+      if(savedScript && scriptNeedsRefresh && job.completed.includes('SCRIPTING')) {
+        event(job,'Updating the old fact-order script to a document walkthrough; research is retained');
+        await invalidate(job,'SCRIPTING');
+      }
+      const script = await stage<Script>('SCRIPTING', 'script.json', async () => {
+        const outline=await buildOutline(facts,inventory);await writeArtifact(id,'story-outline.json',outline);
+        return writeScript(facts,inventory,outline);
+      });
+      if(script.outline)await writeArtifact(id,'story-outline.json',script.outline);
       const speech = await stage<Transcript>('TTS', 'transcript.json', () => generateSpeech(id, script));
+      speech.segments=speech.segments.map(s=>({...s,sectionId:script.segments.find(b=>b.id===s.id)?.sectionId,visitId:script.segments.find(b=>b.id===s.id)?.visitId}));
+      await writeArtifact(id,'transcript.json',speech);
       job.duration = speech.duration; await saveJob(job);
       const shots = await stage<Shot[]>('DIRECTING', 'shot-plan.json', async () => {
         const plan = await visualDirector(speech, inventory, facts, id);
@@ -83,9 +104,14 @@ export async function runPipeline(id: string) {
         for (const note of plan.notes) event(job, note.slice(0,250));
         return plan.shots;
       });
+      async function saveWalkthroughState() {
+        await writeArtifact(id,'walkthrough-report.json',validateContinuity(shots,inventory,speech));
+        await writeArtifact(id,'walkthrough-state.json',shots.map(s=>({shotId:s.id,narration:s.narration,selectedVisual:s.assetId,visualSection:inventory.assets?.find(a=>a.id===s.assetId)?.sectionId||inventory.scenes.find(c=>c.id===s.sceneId)?.sectionId,type:s.type,reason:s.rationale,...s.walkthrough})));
+      }
       const diagnostics = validatePlan(shots, inventory, speech);
       if (!diagnostics.passed) throw new Error('Saved visual plan is invalid; regenerate visuals.');
       await writeArtifact(id, 'diversity.json', diagnostics);
+      await saveWalkthroughState();
       let recordings = await stage<ShotResult[]>('RECORDING', 'recordings.json', () => recordShots(id, shots, inventory, async detail => { event(job, detail); await saveJob(job); }));
       if (!await stat(path.join(jobDir(id), 'final.mp4')).then(s => s.size > 0).catch(() => false)) job.completed = job.completed.filter(s => !['EDITING', 'QA'].includes(s));
       if (!job.completed.includes('EDITING')) await stage('EDITING', null, () => editVideo(id, job.title, shots, recordings, speech));
@@ -93,7 +119,7 @@ export async function runPipeline(id: string) {
       if (!qa.passed) {
         const failed = qa.checks.filter(c => !c.passed && c.severity === 'error');
         if (failed.some(c => ['sources', 'semantic'].includes(c.id))) throw new Error(`Narration QA failed: ${failed.map(c => c.detail).join('; ')}. Regenerate the script.`);
-        if (failed.some(c=>['visual-plan','shot-signatures'].includes(c.id))) throw new Error('Visual direction QA failed. Regenerate visuals while preserving narration.');
+        if (failed.some(c=>['visual-plan','shot-signatures','walkthrough'].includes(c.id))) throw new Error('Visual direction QA failed. Regenerate visuals while preserving narration.');
         // Re-edit media defects once; re-record only clips whose coverage/page checks failed.
         event(job, 'Repairing failed media checks'); job.status = 'EDITING'; await saveJob(job);
         const repairedDiagrams: string[] = [];
@@ -102,6 +128,7 @@ export async function runPipeline(id: string) {
           for (let i = 0; i < shots.length; i++) if (shots[i].type === 'diagram') { repairedDiagrams.push(shots[i].id); shots[i] = fallback.find(s=>s.id===shots[i].id)!; }
           await writeArtifact(id, 'shot-plan.json', shots);
           await writeArtifact(id, 'diversity.json', validatePlan(shots, inventory, speech));
+          await saveWalkthroughState();
           const report = await readArtifact<{ notes: string[] }>(id, 'director-report.json');
           await writeArtifact(id, 'director-report.json', { ...report, ...validatePlan(shots,inventory,speech), notes: [...report.notes, `QA replaced unsupported diagrams ${repairedDiagrams.join(', ')} with source assets`] });
         }

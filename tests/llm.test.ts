@@ -46,13 +46,18 @@ process.stdin.on('end', () => {
     process.env.OPENAI_API_KEY = 'unused'; process.env.CODEX_API_KEY = 'unused'; process.env.CODEX_ACCESS_TOKEN = 'unused'; process.env.LLM_API_KEY = 'unused';
     const schema = z.object({ answer: z.string() });
     assert.equal((await checkCodexLogin()).ok, true);
-    await withModelSettings({ provider: 'codex', model: 'fixture-director', effort: 'high', creativity: 'bold' }, () => modelJson(`Choose shots. ${creativeInstruction()}`, {}, schema));
+    await withModelSettings({ provider: 'codex', model: 'fixture-director', effort: 'high', creativity: 'bold' }, () => modelJson('Write the hook', {}, schema, [], 'script'));
     const directedRequest = JSON.parse(await readFile(capture, 'utf8'));
     assert.equal(directedRequest.args[directedRequest.args.indexOf('--model') + 1], 'fixture-director');
     assert.ok(directedRequest.args.includes('model_reasoning_effort="high"'));
-    assert.match(directedRequest.input, /inventive.*storytelling/);
+    assert.match(directedRequest.input, /inventive.*hook wording/);
     assert.equal(config.codexModel, '', 'Per-job choices must not mutate global configuration');
-    assert.doesNotMatch(creativeInstruction(), /inventive.*storytelling/, 'Creative settings must leave their request scope');
+    assert.doesNotMatch(creativeInstruction(), /inventive.*hook wording/, 'Creative settings must leave their request scope');
+    await withModelSettings({ provider: 'codex', model: 'fixture-director', effort: 'high', creativity: 'bold' }, () => modelJson('Select visits', {}, schema, [], 'navigation'));
+    const navigationRequest=JSON.parse(await readFile(capture,'utf8'));
+    assert.match(navigationRequest.input,/document order/);
+    assert.doesNotMatch(navigationRequest.input,/Script creativity|inventive/);
+    assert.ok(navigationRequest.args.includes('model_reasoning_effort="high"'));
     assert.deepEqual(await modelJson('Check the evidence', { text: 'Literal `$(echo hello)` source text' }, schema), { answer: 'Evidence checked' });
     await modelJson('Inspect the attached visual', {}, schema, [path.join(directory, 'public-source.jpg')]);
     const request = JSON.parse(await readFile(capture, 'utf8'));
@@ -89,6 +94,22 @@ process.stdin.on('end', () => {
     for (const key of Object.keys(process.env)) if (!(key in oldEnv)) delete process.env[key];
     Object.assign(process.env, oldEnv); await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('API sampling follows the task while preserving the selected model and creative script profile',async()=>{
+  const saved={...config},originalFetch=globalThis.fetch;
+  const requests:{temperature:number;model:string;messages:{content:string}[]}[]=[];
+  try {
+    config.llmKey='fixture';
+    globalThis.fetch=async(_url,init)=>{requests.push(JSON.parse(init!.body as string));return Response.json({choices:[{message:{content:'{"answer":"ok"}'}}]});};
+    await withModelSettings({provider:'api',model:'chosen-model',effort:'high',creativity:'bold'},async()=>{
+      for(const task of ['research','mapping','navigation','visual','script','motion','qa'] as const) await modelJson('Task',{},z.object({answer:z.string()}),[],task);
+    });
+    assert.deepEqual(requests.map(r=>r.temperature),[.1,.1,.1,.1,.65,.3,.1]);
+    assert.ok(requests.every(r=>r.model==='chosen-model'));
+    assert.match(requests[4].messages[0].content,/inventive.*hook wording/);
+    assert.doesNotMatch(requests[2].messages[0].content,/inventive|Script creativity/);
+  } finally {Object.assign(config,saved);globalThis.fetch=originalFetch;}
 });
 
 test('concurrent model requests keep per-job choices isolated', async () => {

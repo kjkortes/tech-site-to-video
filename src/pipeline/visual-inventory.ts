@@ -9,7 +9,7 @@ import { jobDir } from '../lib/store';
 // Every image is independent, including images arranged in one README table/grid.
 export async function discoverVisuals(page: Page) {
   const discover = () => {
-    const root = document.querySelector('article.markdown-body,main,article,[role="main"]') || document.body;
+    const root = document.querySelector('article.markdown-body') || document.querySelector('main,article,[role="main"]') || document.body;
     function selector(el: Element): string {
       if (el.id) return `#${CSS.escape(el.id)}`;
       const parts: string[] = [];
@@ -33,13 +33,18 @@ export async function discoverVisuals(page: Page) {
       const description = `${heading?.textContent || ''} ${el.getAttribute('alt') || el.getAttribute('title') || ''} ${section.querySelector('figcaption')?.textContent || ''} ${(section.textContent || '').replace(/\s+/g, ' ').slice(0, 420)}`.replace(/\s+/g, ' ').trim().slice(0, 650);
       return { description, features: [(heading?.textContent || '').trim().slice(0,100), (el.getAttribute('alt') || '').slice(0,120)].filter(Boolean) };
     }
-    const items: { type: 'image'|'gif'|'video'|'code'|'section'|'demo'; url: string; selector: string; description: string; features: string[]; text?: string; width: number; height: number; actions?: { type: 'click'; selector?: string; text: string; role: 'button'|'tab'|'link' }[] }[] = [];
+    const items: { sectionId?: string; documentOrder?: number; scrollY?: number; type: 'image'|'gif'|'video'|'code'|'section'|'demo'; url: string; selector: string; description: string; features: string[]; text?: string; width: number; height: number; actions?: { type: 'click'; selector?: string; text: string; role: 'button'|'tab'|'link' }[] }[] = [];
     const seen = new Set<string>();
     for (const el of root.querySelectorAll('img,video,pre,section,iframe,a[href],button,[role="tab"]')) {
       const rect = el.getBoundingClientRect();
       const visible = getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden';
       if (!visible || rect.width < 20 || rect.height < 10) continue;
       const { description, features } = context(el); const target = selector(el);
+      let owner = root.getAttribute('data-frameforge-section') || undefined;
+      for(const heading of root.querySelectorAll('[data-frameforge-section]')) if(heading===el || heading.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) owner=heading.getAttribute('data-frameforge-section')||owner;
+      const container=el.closest('[data-frameforge-section]');
+      if(container && container!==root)owner=container.getAttribute('data-frameforge-section')||owner;
+      const association={sectionId:owner,documentOrder:[...root.querySelectorAll('*')].indexOf(el),scrollY:Math.max(0,rect.top+scrollY-80)};
       if (el instanceof HTMLImageElement) {
         const src = el.currentSrc || el.src || el.getAttribute('data-src') || '';
         const width = el.naturalWidth || rect.width, height = el.naturalHeight || rect.height;
@@ -47,23 +52,23 @@ export async function discoverVisuals(page: Page) {
         seen.add(src);
         const anchor = el.closest('a');
         const original = anchor?.href && /\.(png|jpe?g|webp|gif)(?:\?|$)/i.test(anchor.href) ? anchor.href : src;
-        items.push({ type: /\.gif(?:\?|$)/i.test(original) ? 'gif' : 'image', url: original, selector: target, features, description: description || 'Product screenshot', width, height });
+        items.push({ ...association, type: /\.gif(?:\?|$)/i.test(original) ? 'gif' : 'image', url: original, selector: target, features, description: description || 'Product screenshot', width, height });
       } else if (el instanceof HTMLVideoElement) {
         const src = el.currentSrc || el.src || el.querySelector('source')?.src;
-        if (src && /^https?:/.test(src)) items.push({ type: 'video', url: src, selector: target, features, description: description || 'Product video', width: el.videoWidth || rect.width, height: el.videoHeight || rect.height });
+        if (src && /^https?:/.test(src)) items.push({ ...association, type: 'video', url: src, selector: target, features, description: description || 'Product video', width: el.videoWidth || rect.width, height: el.videoHeight || rect.height });
       } else if (el.tagName === 'PRE') {
         const text = (el.textContent || '').trim().slice(0, 1400);
-        if (text.length > 12) items.push({ type: 'code', url: location.href, selector: target, features, description, text, width: rect.width, height: rect.height });
+        if (text.length > 12) items.push({ ...association, type: 'code', url: location.href, selector: target, features, description, text, width: rect.width, height: rect.height });
       } else if (el.tagName === 'SECTION' && el.querySelector('h2,h3') && rect.height < 2000) {
-        items.push({ type: 'section', url: location.href, selector: target, features, description, width: rect.width, height: rect.height });
+        items.push({ ...association, type: 'section', url: location.href, selector: target, features, description, width: rect.width, height: rect.height });
       } else if (el.tagName === 'IFRAME') {
         const src = (el as HTMLIFrameElement).src;
-        if (/^https?:/.test(src)) items.push({ type: 'demo', url: src, selector: target, features, description: `Embedded demo/video: ${description}`, width: rect.width, height: rect.height });
+        if (/^https?:/.test(src)) items.push({ ...association, type: 'demo', url: src, selector: target, features, description: `Embedded demo/video: ${description}`, width: rect.width, height: rect.height });
       } else {
         const text = (el.textContent || '').trim();
         if (/\b(demo|examples?|preview|gallery|play)\b/i.test(text) && text.length < 90 && !/download|install|sign|login|subscribe|buy/i.test(text)) {
           const href = el instanceof HTMLAnchorElement ? el.href : location.href;
-          if (/^https?:/.test(href)) items.push({ type: 'demo', url: href, selector: target, features, description: `${text} ${description}`, width: rect.width, height: rect.height, actions: el instanceof HTMLAnchorElement ? undefined : [{ type: 'click', selector: target, text, role: el.getAttribute('role') === 'tab' ? 'tab' : 'button' }] });
+          if (/^https?:/.test(href)) items.push({ ...association, type: 'demo', url: href, selector: target, features, description: `${text} ${description}`, width: rect.width, height: rect.height, actions: el instanceof HTMLAnchorElement ? undefined : [{ type: 'click', selector: target, text, role: el.getAttribute('role') === 'tab' ? 'tab' : 'button' }] });
         }
       }
     }
