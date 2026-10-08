@@ -25,7 +25,7 @@ export const frameStyles = `
 body{margin:0;font-family:Arial,sans-serif;color:#eef4ff;background:transparent}
 #root{width:1080px;height:1920px;position:relative;overflow:hidden}
 .frame{position:absolute;inset:0;pointer-events:none}.frame-bg{position:absolute;inset:0;width:1080px;height:1920px}
-.brand{position:absolute;left:78px;top:26px;margin:0;font-size:30px;letter-spacing:1.5px;color:#9fc6ff}
+.frame-product .chrome,.frame-detail .chrome{display:none}.frame-product .browser-outline,.frame-detail .browser-outline{top:440px;height:1130px}.brand{position:absolute;left:78px;top:26px;margin:0;font-size:30px;letter-spacing:1.5px;color:#9fc6ff}
 .identity{position:absolute;left:72px;top:72px;width:930px;height:76px;display:flex;align-items:center;gap:24px}
 .source-icon{width:68px;height:68px;flex:none;color:#f2f6ff;fill:currentColor}
 .title{margin:0;font-size:60px;line-height:1.15;font-weight:700;white-space:nowrap;min-width:0;overflow:hidden}
@@ -40,12 +40,18 @@ body{margin:0;font-family:Arial,sans-serif;color:#eef4ff;background:transparent}
 // for long product/repository names instead of dropping a second line.
 export const fitTitlesScript = `document.querySelectorAll('.identity').forEach(row=>{const title=row.querySelector('.title');let size=60;const available=row.clientWidth-92;while(size>20&&title.scrollWidth>available){title.style.fontSize=(--size)+'px';}});`;
 
-export function frameMarkup(title: string, url: string, prefix: string, sourceUrl = url) {
+export function frameMarkup(title: string, url: string, prefix: string, sourceUrl = url, framing: 'context' | 'product' | 'detail' = 'context') {
   const identity = sourceIdentity(title, sourceUrl);
   const source = new URL(url);
   const address = escapeHtml(`${source.host}${source.pathname === '/' ? '' : source.pathname}`);
-  return `<div class="frame">
-<svg class="frame-bg" data-layout-allow-overflow viewBox="0 0 1080 1920" aria-hidden="true"><defs><linearGradient id="${prefix}-navy" x2="1" y2="1"><stop stop-color="#1c355d"/><stop offset=".52" stop-color="#0c1b35"/><stop offset="1" stop-color="#071226"/></linearGradient><mask id="${prefix}-window"><rect width="1080" height="1920" fill="white"/><rect x="54" y="188" width="972" height="1684" rx="28" fill="black"/></mask></defs><g mask="url(#${prefix}-window)"><rect width="1080" height="1920" fill="url(#${prefix}-navy)"/><path d="M938 48Q963 21 992 41L1150 141L1035 440L853 230Z" fill="#153765" opacity=".65"/><rect x="672" y="-22" width="355" height="32" rx="10" fill="none" stroke="#4169a5" stroke-width="2"/></g></svg>
+  const panel = panelFor(framing);
+  const windowY = framing === 'context' ? 188 : panel.y;
+  const windowHeight = framing === 'context' ? 1684 : panel.height;
+  return `<div class="frame frame-${framing}">
+<svg class="frame-bg" data-layout-allow-overflow viewBox="0 0 1080 1920" aria-hidden="true"><defs><linearGradient id="${prefix}-navy" x2="1" y2="1"><stop stop-color="#1c355d"/><stop offset=".52" stop-color="#0c1b35"/><stop offset="1" stop-color="#071226"/></linearGradient><mask id="${prefix}-window"><rect width="1080" height="1920" fill="white"/><rect x="54" y="${windowY}" width="972" height="${windowHeight}" rx="28" fill="black"/></mask></defs><g mask="url(#${prefix}-window)"><rect width="1080" height="1920" fill="url(#${prefix}-navy)"/><path d="M938 48Q963 21 992 41L1150 141L1035 440L853 230Z" fill="#153765" opacity=".65"/><rect x="672" y="-22" width="355" height="32" rx="10" fill="none" stroke="#4169a5" stroke-width="2"/></g></svg>
 <p class="brand">Software, in a minute.</p><div class="identity"><svg class="source-icon" viewBox="0 0 24 24" aria-hidden="true">${identity.github ? githubIcon : globeIcon}</svg><h1 class="title">${escapeHtml(identity.title)}</h1></div>
 <div class="browser-outline"></div><div class="chrome"><div class="traffic"><i></i><i></i><i></i></div><div class="address"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>${address}</span></div><div class="chrome-tools"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><svg viewBox="0 0 24 24"><path d="M4 12h2m5 0h2m5 0h2"/></svg></div></div></div>`;
 }
+
+export const productPanel = { x: 54, y: 440, width: 972, height: 1130 };
+export function panelFor(framing?: 'context' | 'product' | 'detail') { return !framing || framing === 'context' ? pagePanel : productPanel; }

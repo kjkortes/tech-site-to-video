@@ -26,7 +26,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         if (job.status !== 'FAILED') throw new Error('Only failed projects can be resumed');
         job.status = 'RECEIVED'; job.revision++; job.error = undefined; event(job, 'Resuming from saved progress');
       } else {
-        const from: Record<typeof input.scope, Stage> = { full: 'RESEARCHING', script: 'SCRIPTING', voice: 'TTS', visuals: 'RECORDING' };
+        const from: Record<typeof input.scope, Stage> = { full: 'RESEARCHING', script: 'SCRIPTING', voice: 'TTS', visuals: 'DIRECTING' };
         await invalidate(job, from[input.scope]);
       }
       await saveJob(job); return job;

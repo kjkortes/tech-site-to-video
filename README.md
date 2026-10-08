@@ -30,20 +30,23 @@ Open **http://127.0.0.1:3000**. `npm run dev:web` starts only the interface; `np
 
 ## What is implemented
 
-- Next.js review studio with persisted projects, worker progress, playable preview, source evidence, timestamped script, QA report, approval/download, skipping, and scoped regeneration.
+- Next.js review studio with persisted projects, worker progress, playable preview, source evidence, timestamped script, inspectable **Shots** tab, QA report, approval/download, skipping, and scoped regeneration.
 - Node/TypeScript pipeline: research → exploration → script → Kokoro → shot plan → clean recording → edit → QA → final review.
 - Separate browser passes. Exploration saves screenshots and replay instructions; only the fresh recording pass becomes browser footage.
-- Vertical videos capture the site's desktop layout at 1280 × 2120 and scale the full page into a tall, rounded browser window. The compact product/repository header, navy backdrop, traffic lights, and address bar follow the reference layout in both FFmpeg and HyperFrames. Choose **Regenerate → Visuals** to replace older captures and framing while preserving the script and narration.
-- GitHub captures hide the repository's right sidebar and expand the README across the frame. The opening shot shows the README's logo, title, introduction, and hero image before moving to deeper sections. **Regenerate → Visuals** refreshes older screenshots and replans the opening while keeping narration and timing.
+- Typed visual inventory treats each README screenshot, GIF, video, section, code block and demo target as an independent candidate. Original raster/media downloads are bounded and every redirect is checked; inaccessible/unsupported media use an element capture. Badges and small icons are filtered out.
+- The Visual Director maps narration and word timestamps to short visual slots, ranks source-matched assets, and optionally uses the configured Codex/API model with up to eight attached product previews to choose actual focal regions. Each persisted shot explains its purpose, asset, framing, motion, caption placement and selection rationale. Invalid model selections fall back to executable source-ranked shots.
+- Product imagery can open the video before repository context. Context, product and detail framing preserve the dark blue identity. Individual images support crops, pushes, pulls, pans and source-anchored highlights. Code scenes show readable source excerpts; diagrams reveal source-backed nodes and connections in sequence and require cited relationships and narrated labels. Camera motion is baked into independent clips, so FFmpeg and HyperFrames use the same treatments.
+- Visible scrolling is opt-in, at most three seconds per shot, never consecutive, and limited to 20% of runtime. Normal navigation happens before the recording trim. Shots normally stay under 4.5 seconds; plan validation rejects long identical compositions, gaps, missing/foreign assets and caption/focus collisions, and reports repeated sources, motions, weak visual support and low-resolution imagery.
+- **Regenerate → Visuals** rebuilds direction, capture and editing while preserving research, script and narration. Existing inventory is upgraded automatically without changing scene IDs or regenerating voice.
 - Public-page research, including GitHub's rendered README and relevant documentation links. Every factual segment cites an exact excerpt and a discovered visual from the same source.
 - Optional local Codex provider using your ChatGPT login, or an OpenAI-compatible API provider, for research, safe exploratory interactions, script writing, and an independent factual audit. Website text is treated as untrusted evidence.
 - **Without a model**, the app works in conservative source-excerpt mode. This avoids inventing capabilities, but produces a less polished script. No fake model responses or placeholder videos are used.
 - Kokoro uses `/api/jobs` with storyboard segments, polls a saved speech job ID, downloads the real WAV, and uses returned timestamps as the master timeline. There is no silent or synthetic fallback for a missing speech service.
-- Independent Playwright clips with handles, saved after each shot. Replays try stored/semantic/text locators; failures retry the shot, then use its discovered screenshot as a supporting visual.
-- FFmpeg assembles 1080 × 1920 H.264/AAC MP4 with framed browser footage, title, and burned captions. Captions use word timestamps where available; sentence-timed proportional chunks are a documented fallback.
+- Independent deterministic Playwright/demo clips and camera-treated media clips are saved after each shot. Checkpoints match the complete shot signature. Replays try stored/semantic/text locators; failures retry only the shot, then use a discovered screenshot and record the fallback reason. A missing clip preserves all surviving captures.
+- FFmpeg assembles 1080 × 1920 / 30fps H.264 with AAC at 48 kHz. Captions overlay the composition at bottom-center, top-center, bottom-left or bottom-right and split at shot boundaries. Word timing is used where available; sentence-timed proportional chunks remain the fallback. Narration is never retimed to fit footage.
 - Every job also gets a portable **HyperFrames HTML composition** with local GSAP, copied media, captions, narration, and seekable timing. Set `VIDEO_RENDERER=hyperframes` to check and render that composition instead of the fast FFmpeg path.
-- QA checks output existence, streams, voice duration, resolution, black intervals, long silence, clip duration, static sections, error-page titles, caption constraints, evidence references, and complete shot coverage. Model mode also checks factual entailment. Media failures get one automatic repair pass.
-- Local JSON snapshots are atomically replaced. Per-job leases prevent a worker and review action from writing simultaneously. Worker restarts reuse stage artifacts and completed clips. Provider/stage failures get one automatic retry and then an actionable saved failure.
+- QA checks output existence, delivery streams, voice duration, resolution, black intervals, long silence, clip duration, long static sections, error-page titles, caption/focal geometry, evidence references, plan diversity, exact capture signatures and complete shot coverage. Clean capture rejects detected consent overlays. Model mode also checks factual entailment. Media failures get one automatic repair pass.
+- Local JSON snapshots are atomically replaced. Per-job leases prevent a worker and review action from writing simultaneously. Worker restarts reuse stage artifacts and completed clips. FFmpeg edits also checkpoint each assembled shot, so an edit retry reuses completed renders when source files and framing match. Provider/stage failures get one automatic retry and then an actionable saved failure.
 - Optional PostgreSQL job persistence and BullMQ/Redis dispatch. Local disk remains the artifact store in both modes.
 
 ## Use your ChatGPT subscription through Codex
@@ -76,15 +79,20 @@ Artifacts live under `data/jobs/<job-id>/`:
 ```text
 job.json                       # local job state (PostgreSQL mode stores state in DB)
 research.json                  # URLs, evidence text, claims and citations
-inventory.json                 # scenes, screenshots and replay actions
+inventory.json                 # scenes plus independent media/code/demo assets
+assets/asset-*                  # original/captured source media
+assets/director-asset-*.jpg     # previews attached to visual direction
 exploration/scene-*.png
 script.json
 tts-progress.json              # external Kokoro job ID for restart recovery
 narration.wav
 transcript.json
-shot-plan.json
-clips/001.webm ...              # independent clean recordings
-recordings.json                # successful clips + trim points + fallback flags
+shot-plan.json                 # timed visual intent and selection rationale
+director-report.json           # direction diagnostics and fallback notes
+diversity.json                 # final pre-capture plan validation
+clips/001.webm / 001.mp4 ...    # independent browser/camera/generated clips
+recordings.json                # signatures, trim points, raw clips, fallback reasons
+render/progress.json           # independent FFmpeg edit checkpoints
 captions.srt / captions.ass
 composition/                   # standalone HyperFrames project + local assets
 final.mp4 / poster.jpg
@@ -98,7 +106,7 @@ Failed jobs stop at the failing stage and can be resumed after fixing the cause.
 | Full video | Research | None |
 | Script | Script | Research and exploration |
 | Voice | TTS | Research, exploration, script |
-| Visuals | Recording | Research through shot plan, including narration |
+| Visuals | Directing | Research, inventory, script and narration |
 
 Approval is a stored human decision and exposes an MP4 download button. The app does not publish to any platform.
 
@@ -125,6 +133,8 @@ npm test
 npm run build
 npm run doctor
 npm run test:e2e
+npm run test:director                         # real visually rich GitHub + model/TTS
+npm run test:renderer -- <director-job-id>     # short alternate-backend render
 ```
 
 The unit suite covers review-state enforcement, QA-gated approval, byte-range video streaming, safe artifact paths, cross-origin mutation rejection, fresh Redis identifiers on resume, private-address blocking, fabricated citations, missing/mismatched visuals, continuous audio-driven shot timing, caption timestamp carry, exclusive leases, and scoped checkpoint invalidation.
@@ -142,9 +152,11 @@ npx hyperframes preview data/jobs/<job-id>/composition --background
 
 The 60-second length is a target, not a hard cut: video follows the actual narration length. QA marks durations outside 40–75 seconds for human review. Speech is never accelerated to fit footage.
 
-Exploration is bounded to a handful of public pages and headings, with optional model-selected read-only interactions. It does not yet implement HyperAgent/Hermes, arbitrary application input, CAPTCHA solving, authentication, vision-based locator recovery, or deployment of GitHub repositories. Remote non-GET requests and form submissions are blocked to keep exploration read-only; some interactive demos therefore fall back to documentation or screenshots. An inaccessible site fails clearly instead of generating a misleading demo.
+Exploration is bounded to a handful of public pages, headings, individual media assets and two discovered demo probes, with optional model-selected read-only interactions. It does not yet implement HyperAgent/Hermes, arbitrary application input, CAPTCHA solving, authentication, vision-based locator recovery, or deployment of GitHub repositories. Remote non-GET requests and form submissions are blocked to keep exploration read-only; some interactive demos therefore fall back to documentation or screenshots. An inaccessible site fails clearly instead of generating a misleading demo.
 
-Pixel-level semantic vision QA is not implemented. The quality report explicitly marks frame meaning for human review. Error detection currently uses HTTP responses and page titles, freeze detection flags static sections as review warnings, and caption validation checks timing/length constraints rather than every rasterized pixel. A QA percentage is the share of checks passed, not a claim that a vision model graded the video. The final human review remains necessary.
+Pixel-level semantic vision QA is not implemented. The director can inspect attached source images, but this is not a claim that the finished video received a vision audit. The quality report explicitly marks frame meaning for human review. Error detection currently uses HTTP responses and page titles, freeze detection flags static sections as review warnings, and caption validation checks timing/length and planned focal geometry rather than every rasterized pixel. A QA percentage is the share of checks passed, not a claim that a vision model graded the video. The final human review remains necessary.
+
+Diagram planning is intentionally conservative: labels must occur in narration and edges must cite an exact researched quote; unsupported diagrams are rejected in favor of source assets. Native repositories are not built or installed. Authenticated demos, DRM/streaming video and arbitrary remote application input remain outside the automated capture scope.
 
 AI quality and GitHub/site variability require broader real-world evaluation. The default renderer and local pipeline are covered end to end, and a short HyperFrames composition has been checked and rendered. AI providers require a ready Codex ChatGPT login or API endpoint; Redis and PostgreSQL require their configured services. S3 storage and automatic publishing are future work.
 

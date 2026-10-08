@@ -39,10 +39,10 @@ test('shot timing covers initial silence, speech pauses and final audio exactly'
   ] };
   const shots = direct(transcript, inventory);
   assert.equal(shots[0].start, 0); assert.equal(shots[0].duration, 3.6);
-  assert.equal(shots[1].start, 3.6); assert.equal(shots[1].start + shots[1].duration, transcript.duration);
+  assert.equal(shots[1].start, 3.6); assert.equal(shots.at(-1)!.start + shots.at(-1)!.duration, transcript.duration);
   assert.equal(shots.reduce((sum, s) => sum + s.duration, 0), transcript.duration);
 });
-test('GitHub videos open on the README overview while retaining later sourced scenes and voice timing', () => {
+test('GitHub context-only inventories retain source identity and bounded narration timing', () => {
   const overview = { ...inventory.scenes[0], url: 'https://github.com/storytold/photocraft', title: 'Product overview' };
   const feature = { ...overview, id: 'scene-2', title: 'Features', actions: [{ type: 'scroll' as const, text: 'Features', y: 3000 }] };
   const otherOverview = { ...overview, id: 'scene-3', sourceId: 'source-2', url: 'https://github.com/other/repo' };
@@ -54,10 +54,10 @@ test('GitHub videos open on the README overview while retaining later sourced sc
   const shots = direct(transcript, scenes);
   assert.equal(shots[0].sceneId, overview.id);
   assert.deepEqual(shots[0].actions, []);
-  assert.equal(shots[0].duration, 10);
-  assert.equal(shots[1].sceneId, feature.id);
-  assert.deepEqual(shots[1].actions, feature.actions);
-  assert.equal(shots[1].start + shots[1].duration, 20);
+  assert.ok(shots.every(s=>s.duration <= 4.5));
+  assert.ok(shots.some(s=>s.sceneId === feature.id));
+  assert.ok(shots.every(s=>s.sceneId !== otherOverview.id));
+  assert.equal(shots.at(-1)!.start + shots.at(-1)!.duration, 20);
 });
 test('caption chunks retain word timing and normalize timestamp carry', () => {
   const transcript: Transcript = { duration: 62, timingSource: 'kokoro', segments: [], words: [{ text: 'Hello', start: 59.9996, end: 60.5 }, { text: 'world.', start: 60.5, end: 61 }] };

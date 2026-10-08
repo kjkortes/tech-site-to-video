@@ -93,3 +93,15 @@ test('GitHub captures frame the README opening and reclaim the right sidebar spa
     assert.equal(await page.evaluate(() => scrollY), 0);
   } finally { await browser.close(); }
 });
+
+test('clean capture detects consent overlays while ignoring hidden duplicates', async () => {
+  const { consentObscuresPage }=await import('../src/pipeline/browser');
+  const browser=await launchBrowser();
+  try {
+    const page=await browser.newPage({viewport:{width:1280,height:2120}});
+    await page.setContent('<div role="dialog" style="display:none">Cookies</div><div role="dialog" style="position:fixed;inset:0">Cookie consent controls</div>');
+    assert.equal(await consentObscuresPage(page),true);
+    await page.locator('[role="dialog"]').last().evaluate(el=>(el as HTMLElement).style.display='none');
+    assert.equal(await consentObscuresPage(page),false);
+  } finally { await browser.close(); }
+});

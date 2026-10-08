@@ -5,8 +5,8 @@ import { Readable } from 'node:stream';
 import { getJob, jobDir } from '@/lib/store';
 import { apiError } from '@/lib/api';
 export const runtime = 'nodejs';
-const allowed = /^(final\.mp4|poster\.jpg|narration\.wav|captions\.srt|research\.json|inventory\.json|script\.json|transcript\.json|shot-plan\.json|qa\.json|exploration\/scene-\d+\.png)$/;
-const mime: Record<string, string> = { '.mp4': 'video/mp4', '.jpg': 'image/jpeg', '.png': 'image/png', '.wav': 'audio/wav', '.json': 'application/json', '.srt': 'application/x-subrip' };
+const allowed = /^(final\.mp4|poster\.jpg|narration\.wav|captions\.srt|research\.json|inventory\.json|script\.json|transcript\.json|shot-plan\.json|qa\.json|director-report\.json|diversity\.json|recordings\.json|assets\/asset-\d+\.(png|jpg|webp|gif|mp4|webm)|clips\/\d+(-camera|-source)?\.(mp4|webm|png)|exploration\/scene-\d+\.png)$/;
+const mime: Record<string, string> = { '.mp4': 'video/mp4', '.jpg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.webm': 'video/webm', '.wav': 'audio/wav', '.json': 'application/json', '.srt': 'application/x-subrip' };
 export async function GET(request: Request, context: { params: Promise<{ id: string; path: string[] }> }) {
   try {
     const { id, path: parts } = await context.params; const relative = parts.join('/');

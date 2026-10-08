@@ -151,3 +151,10 @@ export function relevantLinks(url: string, links: { text: string; href: string }
     } catch { return false; }
   }).slice(0, config.explorePages - 1);
 }
+
+export async function consentObscuresPage(page: Page) {
+  return page.evaluate(() => [...document.querySelectorAll('[role="dialog"],#onetrust-banner-sdk,.cookie-banner,[aria-label*="cookie" i]')].some(el => {
+    const r = el.getBoundingClientRect(); const style = getComputedStyle(el);
+    return /cookie|consent/i.test(el.textContent || el.getAttribute('aria-label') || '') && style.display !== 'none' && style.visibility !== 'hidden' && r.width * r.height > innerWidth * innerHeight * .08;
+  }));
+}

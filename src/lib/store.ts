@@ -49,8 +49,8 @@ export function event(job: Job, message: string) {
   job.events = [...job.events, { at: new Date().toISOString(), stage: job.status, message }].slice(-150);
 }
 export const artifactNames: Record<Stage, string[]> = {
-  RESEARCHING: ['research.json'], EXPLORING: ['inventory.json', 'exploration'], SCRIPTING: ['script.json'],
-  TTS: ['transcript.json', 'narration.wav', 'tts-progress.json', 'speech'], DIRECTING: ['shot-plan.json'],
+  RESEARCHING: ['research.json'], EXPLORING: ['inventory.json', 'exploration', 'assets'], SCRIPTING: ['script.json'],
+  TTS: ['transcript.json', 'narration.wav', 'tts-progress.json', 'speech'], DIRECTING: ['shot-plan.json', 'director-report.json', 'diversity.json'],
   RECORDING: ['recordings.json', 'clips'], EDITING: ['final.mp4', 'poster.jpg', 'captions.srt', 'captions.ass', 'composition', 'render'], QA: ['qa.json'],
 };
 export async function invalidate(job: Job, from: Stage) {

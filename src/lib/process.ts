@@ -11,6 +11,6 @@ export async function run(command: string, args: string[], options: { cwd?: stri
   });
 }
 export async function probe(file: string) {
-  return JSON.parse(await run('ffprobe', ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', file])) as { format: { duration: string; size: string }; streams: { codec_type: string; width?: number; height?: number; codec_name: string }[] };
+  return JSON.parse(await run('ffprobe', ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', file])) as { format: { duration: string; size: string }; streams: { codec_type: string; width?: number; height?: number; codec_name: string; sample_rate?: string; avg_frame_rate?: string }[] };
 }
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

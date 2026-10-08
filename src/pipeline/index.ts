@@ -6,8 +6,8 @@ import { explore, refreshInventoryCapture } from './explore';
 import { captureMode, matchesCapture } from './browser';
 import { writeScript } from './script';
 import { generateSpeech } from './tts';
-import { direct } from './direct';
-import { recordShots } from './record';
+import { direct, visualDirector, directorRevision, validatePlan } from './direct';
+import { recordShots, shotSignature } from './record';
 import { editVideo } from './edit';
 import { checkVideo } from './qa';
 import { sleep } from '../lib/process';
@@ -29,6 +29,8 @@ export async function runPipeline(id: string) {
           if (name === 'RECORDING') {
             const clips = await readArtifact<ShotResult[]>(id, filename);
             if (clips.some(clip => !matchesCapture(clip))) throw new Error('Browser capture layout changed');
+            const savedShots = await readArtifact<Shot[]>(id, 'shot-plan.json');
+            if (savedShots.length !== clips.length || savedShots.some(s=>clips.find(c=>c.id===s.id)?.signature !== shotSignature(s))) throw new Error('Shot intent changed');
             await Promise.all(clips.map(clip => stat(path.join(jobDir(id), clip.clip))));
           }
           if (name === 'QA') await stat(path.join(jobDir(id), 'final.mp4'));
@@ -58,7 +60,7 @@ export async function runPipeline(id: string) {
       const facts = await stage<Research>('RESEARCHING', 'research.json', () => research(job.url));
       job.title = facts.title; await saveJob(job);
       let inventory = await stage<Inventory>('EXPLORING', 'inventory.json', () => explore(id, facts));
-      if (!matchesCapture(inventory)) {
+      if (!matchesCapture(inventory) || inventory.directorRevision !== directorRevision) {
         refreshingCapture = true;
         active = 'EXPLORING'; job.status = 'EXPLORING';
         event(job, `Refreshing ${captureMode} browser visuals`); await saveJob(job);
@@ -71,7 +73,15 @@ export async function runPipeline(id: string) {
       const script = await stage<Script>('SCRIPTING', 'script.json', () => writeScript(facts, inventory));
       const speech = await stage<Transcript>('TTS', 'transcript.json', () => generateSpeech(id, script));
       job.duration = speech.duration; await saveJob(job);
-      const shots = await stage<Shot[]>('DIRECTING', 'shot-plan.json', async () => direct(speech, inventory));
+      const shots = await stage<Shot[]>('DIRECTING', 'shot-plan.json', async () => {
+        const plan = await visualDirector(speech, inventory, facts, id);
+        await writeArtifact(id, 'director-report.json', { ...plan.diagnostics, notes: plan.notes, directorRevision });
+        for (const note of plan.notes) event(job, note.slice(0,250));
+        return plan.shots;
+      });
+      const diagnostics = validatePlan(shots, inventory, speech);
+      if (!diagnostics.passed) throw new Error('Saved visual plan is invalid; regenerate visuals.');
+      await writeArtifact(id, 'diversity.json', diagnostics);
       let recordings = await stage<ShotResult[]>('RECORDING', 'recordings.json', () => recordShots(id, shots, inventory, async detail => { event(job, detail); await saveJob(job); }));
       if (!await stat(path.join(jobDir(id), 'final.mp4')).then(s => s.size > 0).catch(() => false)) job.completed = job.completed.filter(s => !['EDITING', 'QA'].includes(s));
       if (!job.completed.includes('EDITING')) await stage('EDITING', null, () => editVideo(id, job.title, shots, recordings, speech));
@@ -79,9 +89,19 @@ export async function runPipeline(id: string) {
       if (!qa.passed) {
         const failed = qa.checks.filter(c => !c.passed && c.severity === 'error');
         if (failed.some(c => ['sources', 'semantic'].includes(c.id))) throw new Error(`Narration QA failed: ${failed.map(c => c.detail).join('; ')}. Regenerate the script.`);
+        if (failed.some(c=>['visual-plan','shot-signatures'].includes(c.id))) throw new Error('Visual direction QA failed. Regenerate visuals while preserving narration.');
         // Re-edit media defects once; re-record only clips whose coverage/page checks failed.
         event(job, 'Repairing failed media checks'); job.status = 'EDITING'; await saveJob(job);
-        const badShots = failed.filter(c => c.id.startsWith('clip-')).map(c => c.id.slice(5));
+        const repairedDiagrams: string[] = [];
+        if (failed.some(c => c.id === 'diagram-evidence')) {
+          const fallback = direct(speech, inventory);
+          for (let i = 0; i < shots.length; i++) if (shots[i].type === 'diagram') { repairedDiagrams.push(shots[i].id); shots[i] = fallback.find(s=>s.id===shots[i].id)!; }
+          await writeArtifact(id, 'shot-plan.json', shots);
+          await writeArtifact(id, 'diversity.json', validatePlan(shots, inventory, speech));
+          const report = await readArtifact<{ notes: string[] }>(id, 'director-report.json');
+          await writeArtifact(id, 'director-report.json', { ...report, ...validatePlan(shots,inventory,speech), notes: [...report.notes, `QA replaced unsupported diagrams ${repairedDiagrams.join(', ')} with source assets`] });
+        }
+        const badShots = failed.filter(c => c.id.startsWith('clip-')).map(c => c.id.slice(5)).concat(repairedDiagrams);
         if (failed.some(c => c.id === 'pages')) badShots.push(...recordings.filter(r => /404|403|access denied|page not found/i.test(r.pageTitle)).map(r => r.id));
         if (badShots.length) {
           await writeArtifact(id, 'recordings.json', recordings.filter(r => !badShots.includes(r.id)));

@@ -47,8 +47,14 @@ process.stdin.on('end', () => {
     const schema = z.object({ answer: z.string() });
     assert.equal((await checkCodexLogin()).ok, true);
     assert.deepEqual(await modelJson('Check the evidence', { text: 'Literal `$(echo hello)` source text' }, schema), { answer: 'Evidence checked' });
+    await modelJson('Inspect the attached visual', {}, schema, [path.join(directory, 'public-source.jpg')]);
     const request = JSON.parse(await readFile(capture, 'utf8'));
-    assert.match(request.input, /Literal `\$\(echo hello\)` source text/);
+    assert.ok(request.args.includes('--image'));
+    assert.ok(request.args.includes(path.join(directory,'public-source.jpg')));
+    // Read the first evidence call again for shell-text preservation below.
+    await modelJson('Check the evidence', { text: 'Literal `$(echo hello)` source text' }, schema);
+    const evidenceRequest = JSON.parse(await readFile(capture, 'utf8'));
+    assert.match(evidenceRequest.input, /Literal `\$\(echo hello\)` source text/);
     assert.match(request.input, /untrusted evidence/);
     assert.ok(!request.args.some((arg: string) => arg.includes('Literal')));
     assert.ok(request.args.includes('forced_login_method="chatgpt"'));
