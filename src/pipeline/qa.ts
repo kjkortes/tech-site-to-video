@@ -6,13 +6,18 @@ import { probe, run } from '../lib/process';
 import { modelJson, modelEnabled } from '../lib/llm';
 import { Inventory, QAReport, Research, Script, Shot, ShotResult, Transcript } from '../lib/types';
 import { validateScript } from './script';
-import { directedCaptions } from './captions';
+import { directedCaptions, validateCaptions } from './captions';
+import { validateCoverage } from './coverage';
+import { validateRetention } from './retention';
+import { safeVisual } from './safe-area';
+import { codeVisualsAllowed } from './content-policy';
+import { focalIsSafe } from './framing';
+import { cameraSummary, validateCameraPlan } from './camera-policy';
 
-import { validatePlan } from './direct';
+import { validatePlan, captionIntersectsFocus } from './direct';
 import { validateContinuity } from './walkthrough';
 import { shotSignature } from './record';
 import { panelFor } from './video-layout';
-import { captionAnchor } from './captions';
 
 export async function auditScript(script: Script, research: Research) {
   return modelJson('Independently audit each narration segment against its cited source quotes. Return {supported:boolean,issues:[string]}. Every factual assertion must be entailed by its cited quotes. Reject added claims about price, licenses, capabilities, benefits, purposes, or website locations. Evaluate the actual words asserted, not stronger statements the narration does not make. Lists introduced by "includes", "such as", or "examples" are non-exhaustive: naming three examples does not assert that there are exactly or only three in total. Conversely, "only", "exactly", and exhaustive totals require explicit evidence. Accept faithful paraphrases and literal counts of explicitly named items. Report specific unsupported assertions, not speculative implications or stylistic preferences.', { script, claims: research.claims }, z.object({ supported: z.boolean(), issues: z.array(z.string()) }),[], 'qa');
@@ -28,11 +33,25 @@ export async function checkVideo(id: string, research: Research, inventory: Inve
   const info = await probe(file); const duration = Number(info.format.duration);
   const video = info.streams.find(s => s.codec_type === 'video'); const audio = info.streams.find(s => s.codec_type === 'audio');
   add('duration', 'Voice and picture timing', Math.abs(duration - transcript.duration) < 0.35, `${duration.toFixed(2)}s video / ${transcript.duration.toFixed(2)}s narration`);
-  add('target', 'Short video length', duration >= 40 && duration <= 75, `Target: about 60 seconds. Actual: ${duration.toFixed(1)} seconds.`, 'warning');
+  add('target', 'Short video length', duration >= 20 && duration <= 65, `Concise story, typically 40–50 seconds; no required minute. Actual: ${duration.toFixed(1)} seconds.`, 'warning');
   add('resolution', 'Vertical 1080p', video?.width === 1080 && video?.height === 1920, `${video?.width} × ${video?.height}`);
   add('audio', 'Narration track', !!audio, audio ? `Audio encoded as ${audio.codec_name}` : 'No audio stream found');
   add('delivery', '30fps and AAC 48kHz delivery', video?.avg_frame_rate === '30/1' && audio?.codec_name === 'aac' && audio?.sample_rate === '48000', `${video?.avg_frame_rate}fps / ${audio?.codec_name} ${audio?.sample_rate}Hz`);
   const diversity = validatePlan(shots, inventory, transcript);
+  const coverage=validateCoverage(shots,inventory,transcript,research),retention=validateRetention(shots,inventory,transcript,script);
+  add('visual-coverage','Narration-supported visual coverage',coverage.passed,`${coverage.groups.length} explicit source/phrase groups. ${coverage.issues.map(i=>i.detail).join('; ')}`);
+  add('readability','Cutaway inspection time',!coverage.issues.some(i=>i.code==='readability-time'||i.code==='short-payoff'),coverage.issues.filter(i=>i.severity==='warning').map(i=>i.detail).join('; ')||'Sources remain visible for full phrases and readable inspection time','warning');
+  add('retention','Hook, progression and final payoff',retention.passed,`Retention ${retention.score}/100. ${retention.issues.map(i=>i.detail).join('; ')}`);
+  add('retention-review','Story pacing review',!retention.issues.length,retention.issues.map(i=>i.detail).join('; ')||'Immediate product, complete source explanations and a readable final product payoff','warning');
+  add('full-bleed-scale','Source fills the video viewport',shots.every(s=>safeVisual(panelFor(s.framing))),'Native page viewport spans the canvas; media preserves the full source using contain, with captions overlaid');
+  const camera=validateCameraPlan(shots,inventory,transcript),summary=cameraSummary(shots,inventory);
+  add('camera-policy','Source intro, contextual camera and temporary detail',camera.passed,camera.issues.map(i=>i.detail).join('; ')||`Page ${(summary.pageRatio*100).toFixed(1)}%, contextual ${(summary.contextualRatio*100).toFixed(1)}%, detail ${(summary.detailRatio*100).toFixed(1)}%; media starts wide`);
+  add('visible-source-area','Source context remains visible',summary.views.every(v=>v.visibleSourceArea>=.5),`Minimum visible source area ${(Math.min(...summary.views.map(v=>v.visibleSourceArea))*100).toFixed(1)}%`);
+  add('platform-zones','Critical features avoid platform UI',shots.every(s=>{const a=inventory.assets?.find(a=>a.id===s.assetId);return !a||focalIsSafe(s,a);}), 'Full-bleed source may extend beneath UI; the narrated focal area stays above captions and left of controls');
+  add('promotional-code','Content mode visual policy',codeVisualsAllowed(inventory.contentMode)||!shots.some(s=>s.type==='code_focus'),'Promotional mode blocks raw code and generated command cards');
+  const media=shots.filter(s=>s.type!=='diagram' && ['image','gif','video'].includes(inventory.assets?.find(a=>a.id===s.assetId)?.type||''));
+  add('media-isolation','One intended asset per media cutaway',media.every(s=>{const r=recordings.find(r=>r.id===s.id);return !s.contextPreview && !r?.fallback && r?.mediaIsolation?.assetId===s.assetId && r?.mediaIsolation?.layers===1;}),'Media comes from a raw file or exact image element; no README origin overlays or gallery fallbacks');
+  add('source-code','Actual source code is used when available',shots.filter(s=>s.type==='code_focus').every(s=>recordings.find(r=>r.id===s.id)?.kind==='asset'),'Original syntax-highlighted code captures take priority; generated excerpts are reported fallbacks','warning');
   const continuity=validateContinuity(shots,inventory,transcript);
   add('walkthrough','Document walkthrough continuity',continuity.passed,`Continuity ${continuity.score}/100; browser ${(100*continuity.browserDuration/transcript.duration).toFixed(0)}%. ${continuity.issues.map(i=>i.detail).join('; ')}`);
   add('visual-plan', 'Visual direction and diversity', diversity.passed, `Diversity ${diversity.score}/100; visible scroll ${diversity.scrollDuration.toFixed(1)}s. ${diversity.issues.map(i => i.detail).join('; ')}`);
@@ -45,22 +64,16 @@ export async function checkVideo(id: string, research: Research, inventory: Inve
   let freezeCount = 0;
   for (const recording of recordings) {
     const scan = await run('ffmpeg', ['-hide_banner', '-ss', String(recording.trimStart), '-t', String(recording.duration), '-i', path.join(jobDir(id), recording.clip), '-vf', 'freezedetect=n=-55dB:d=5.5', '-an', '-f', 'null', '-']);
-    if (/freeze_start:/.test(scan)) freezeCount++;
+    if (/freeze_start:/.test(scan) && (recordings.find(r=>r.id===recording.id)?.kind==='browser' && shots.find(s=>s.id===recording.id)?.walkthrough?.transition || shots.find(s=>s.id===recording.id)?.cameraMode==='detail')) freezeCount++;
     const clip = await probe(path.join(jobDir(id), recording.clip));
     add(`clip-${recording.id}`, `Shot ${Number(recording.id)} coverage`, Number(clip.format.duration) + 0.2 >= recording.trimStart + recording.duration, `Saved clip covers its ${recording.duration.toFixed(1)}s narration segment`);
   }
   add('freeze', 'Footage movement', freezeCount === 0, freezeCount ? `${freezeCount} shots contain static sections; they may be intentional page views` : 'No sustained freezes detected', 'warning');
   add('pages', 'No error pages', recordings.every(r => !/\b(404|403|page not found|access denied|just a moment)\b/i.test(r.pageTitle)), 'Checked recorded page titles');
   const captions = directedCaptions(transcript, shots);
-  add('captions', 'Captions inside safe area', captions.every(c => c.text.length <= 60 && c.start >= 0 && c.end <= transcript.duration + 0.25), 'Captions are constrained to two lines inside the vertical frame');
-  const collisions = shots.filter(s => {
-    const focus = s.highlight || s.focus; if (!focus || s.framing !== 'context') return false;
-    const panel = panelFor(s.framing), anchor = captionAnchor(s.captionPosition);
-    const focal = { x: panel.x + focus.x * panel.width, y: panel.y + focus.y * panel.height, width: focus.width * panel.width, height: focus.height * panel.height };
-    const captionTop = anchor.alignment === 8 ? anchor.y : anchor.y - 140;
-    return focal.y < captionTop + 140 && focal.y + focal.height > captionTop && focal.x < 975 && focal.x + focal.width > 105;
-  });
-  add('caption-focus', 'Captions avoid focal UI', !collisions.length, collisions.length ? `Focal area overlap in shots ${collisions.map(s=>s.id).join(', ')}` : 'Caption bands and focal geometry do not overlap');
+  add('captions', 'Fixed lower safe captions', validateCaptions(captions) && captions.every(c=>c.start>=0 && c.end<=transcript.duration+.025) && shots.every(s=>s.captionPosition==='bottom-center'), 'Readable 42–48px captions, at most two lines, inside the lower safe band; right and bottom platform exclusions remain clear');
+  const collisions=shots.filter(s=>captionIntersectsFocus(s,inventory.assets?.find(a=>a.id===s.assetId)));
+  add('caption-focus', 'Captions avoid focal UI', !collisions.length, collisions.length ? `Reframe visuals in shots ${collisions.map(s=>s.id).join(', ')}` : 'Visual panels and source focal geometry remain above the fixed subtitle zone');
   let structural = true;
   try { validateScript(script, research, inventory); } catch { structural = false; }
   add('sources', 'Source-backed narration', structural && research.claims.every(c => research.sources.find(s => s.id === c.sourceId)?.text.includes(c.quote)), 'Every claim maps to an exact excerpt and every segment maps to a discovered scene');

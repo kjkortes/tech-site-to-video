@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     requireLocalMutation(request);
     const input = createJobSchema.parse(await request.json());
     const url = await validatePublicUrl(input.url);
-    const job = await createJob(url, input.llm);
+    const job = await createJob(url, input.llm, input.contentMode);
     // Worker reconciliation recovers the durable job if Redis is temporarily unavailable.
     await enqueue(job.id, job.revision).catch(console.error);
     return NextResponse.json({ job }, { status: 202 });

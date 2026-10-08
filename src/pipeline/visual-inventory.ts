@@ -5,6 +5,7 @@ import { VisualAsset, Scene } from '../lib/types';
 import { validatePublicUrl } from '../lib/network';
 import { probe } from '../lib/process';
 import { jobDir } from '../lib/store';
+import { captureSourceCode } from './source-code';
 
 // Every image is independent, including images arranged in one README table/grid.
 export async function discoverVisuals(page: Page) {
@@ -57,7 +58,7 @@ export async function discoverVisuals(page: Page) {
         const src = el.currentSrc || el.src || el.querySelector('source')?.src;
         if (src && /^https?:/.test(src)) items.push({ ...association, type: 'video', url: src, selector: target, features, description: description || 'Product video', width: el.videoWidth || rect.width, height: el.videoHeight || rect.height });
       } else if (el.tagName === 'PRE') {
-        const text = (el.textContent || '').trim().slice(0, 1400);
+        const text = (el.textContent || '').replace(/\r/g,'').slice(0, 12000);
         if (text.length > 12) items.push({ ...association, type: 'code', url: location.href, selector: target, features, description, text, width: rect.width, height: rect.height });
       } else if (el.tagName === 'SECTION' && el.querySelector('h2,h3') && rect.height < 2000) {
         items.push({ ...association, type: 'section', url: location.href, selector: target, features, description, width: rect.width, height: rect.height });
@@ -111,16 +112,22 @@ export async function collectVisuals(id: string, page: Page, scene: Scene, offse
     const asset: VisualAsset = { ...candidate, id: assetId, sceneId: scene.id, sourceId: scene.sourceId, pageUrl: candidate.type === 'demo' ? candidate.url : scene.url, features: candidate.features, quality: Math.min(1, candidate.width / 1600) * .7 + .2, confidence: candidate.description ? .8 : .5, canEnlarge: true, animated: ['video','gif','demo'].includes(candidate.type) };
     try {
       if (['image', 'gif', 'video'].includes(candidate.type)) {
-        try { const downloaded = await downloadVisual(candidate.url, path.join(dir, 'assets', assetId)); asset.localPath = path.relative(dir, downloaded.path); asset.type = downloaded.type; const info = await probe(downloaded.path); const stream = info.streams.find(s=>s.codec_type==='video'); if (stream?.width && stream.height) { asset.width = stream.width; asset.height = stream.height; asset.quality = Math.min(1, stream.width / 1600) * .7 + .2; } }
+        try { const downloaded = await downloadVisual(candidate.url, path.join(dir, 'assets', assetId)); asset.localPath = path.relative(dir, downloaded.path); asset.captureMethod='raw-media'; asset.isolated=true; asset.type = downloaded.type; const info = await probe(downloaded.path); const stream = info.streams.find(s=>s.codec_type==='video'); if (stream?.width && stream.height) { asset.width = stream.width; asset.height = stream.height; asset.quality = Math.min(1, stream.width / 1600) * .7 + .2; } }
         catch (error) {
           notes.push(`${assetId}: original media unavailable, using independent element capture: ${(error as Error).message}`);
           const localPath = `assets/${assetId}.png`;
           await page.locator(candidate.selector).screenshot({ path: path.join(dir, localPath), animations: 'disabled', timeout: 7000 });
-          asset.localPath = localPath; asset.type = 'image'; asset.animated = false;
+          asset.localPath = localPath; asset.type = 'image'; asset.animated = false; asset.captureMethod='element';asset.isolated=true;
+          const stream=(await probe(path.join(dir,localPath))).streams.find(s=>s.codec_type==='video');if(stream?.width&&stream.height){asset.width=stream.width;asset.height=stream.height;}
         }
       } else if (candidate.type !== 'demo') {
         const localPath = `assets/${assetId}.png`;
-        await page.locator(candidate.selector).screenshot({ path: path.join(dir, localPath), animations: 'disabled', timeout: 7000 });
+        if(candidate.type==='code') {
+          const metadata=await captureSourceCode(page,candidate.selector,path.join(dir,localPath));
+          const info=await probe(path.join(dir,localPath)),stream=info.streams.find(s=>s.codec_type==='video');
+          asset.width=stream?.width||metadata.width;asset.height=stream?.height||metadata.height;
+          asset.code={fontSize:metadata.fontSize*asset.width/metadata.width,lines:metadata.lines};
+        } else await page.locator(candidate.selector).screenshot({ path: path.join(dir, localPath), animations: 'disabled', timeout: 7000 });
         asset.localPath = localPath;
       }
       assets.push(asset);

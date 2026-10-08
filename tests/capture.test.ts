@@ -27,16 +27,19 @@ test('all director treatments render real clips, retain captions, and retry only
     await run('ffmpeg',['-y','-f','lavfi','-i','testsrc2=s=1600x1000:r=30','-frames:v','1','-threads','1',path.join(dir,'product.png')]);
     await run('ffmpeg',['-y','-f','lavfi','-i','testsrc2=s=972x1130:r=30:d=0.6','-c:v','libx264','-threads','2','-preset','ultrafast',path.join(dir,'video.mp4')]);
     const base: VisualAsset = { id:'image',sceneId:'scene-1',sourceId:'source-1',type:'image',url,pageUrl:url,localPath:'product.png',description:'Layers screenshot',features:['Layers'],width:1600,height:1000,quality:.9,confidence:.9,canEnlarge:true,animated:false };
-    const inventory: Inventory = {notes:[],scenes:[{id:'scene-1',sourceId:'source-1',url,title:'Fixture',description:'Product layers',actions:[],screenshot:'product.png'}],assets:[base,{...base,id:'section',type:'section'}, {...base,id:'video',type:'video',localPath:'video.mp4',animated:true},{...base,id:'code',type:'code',text:'npm install example\nexample --export output.png'}, {...base,id:'demo',type:'demo',actions:[{type:'click',text:'Play demo',role:'button'}]}, {...base,id:'missing',localPath:'missing.png'}]};
-    const shots: Shot[] = shotTypes.map((type,i)=>({id:String(i+1).padStart(3,'0'),sceneId:'scene-1',assetId:type==='video_playback'?'video':type==='code_focus'?'code':type==='click_demo'?'demo':['walkthrough','establish','scroll_to','feature_card'].includes(type)?'section':'image',segmentId:'segment-1',url,actions:type==='click_demo'?[{type:'click',text:'Play demo',role:'button'}]:[],type,framing:['walkthrough','establish','scroll_to','click_demo'].includes(type)?'context':'product',start:i*.6,duration:.6,motion:type==='pan_media'?'pan-right':'slow-push',focus:type==='zoom_region'?{x:.3,y:.1,width:.6,height:.8}:undefined,highlight:type==='highlight'?{x:.6,y:.1,width:.3,height:.6}:undefined,diagram:type==='diagram'?{nodes:[{id:'cli',label:'CLI'},{id:'app',label:'Application'}],edges:[{from:'cli',to:'app',evidence:'The CLI controls the Application.'}]}:undefined,purpose:'Show real fixture',caption:'Fixture',captionPosition:i%2?'top-center':'bottom-center'}));
+    const inventory: Inventory = {contentMode:'developer',notes:[],scenes:[{id:'scene-1',sourceId:'source-1',url,title:'Fixture',description:'Product layers',actions:[],screenshot:'product.png'}],assets:[base,{...base,id:'section',type:'section'}, {...base,id:'video',type:'video',localPath:'video.mp4',animated:true},{...base,id:'code',type:'code',text:'npm install example\nexample --export output.png'}, {...base,id:'demo',type:'demo',actions:[{type:'click',text:'Play demo',role:'button'}]}, {...base,id:'missing',localPath:'missing.png'}]};
+    const shots: Shot[] = shotTypes.map((type,i)=>({id:String(i+1).padStart(3,'0'),sceneId:'scene-1',assetId:type==='video_playback'?'video':type==='code_focus'?'code':type==='click_demo'?'demo':['walkthrough','establish','scroll_to','feature_card'].includes(type)?'section':'image',segmentId:'segment-1',url,actions:type==='click_demo'?[{type:'click',text:'Play demo',role:'button'}]:[],type,framing:['walkthrough','establish','scroll_to','click_demo'].includes(type)?'context':'product',start:i*.6,duration:.6,motion:type==='pan_media'?'pan-right':'slow-push',focus:type==='zoom_region'?{x:.3,y:.1,width:.6,height:.8}:undefined,highlight:type==='highlight'?{x:.6,y:.1,width:.3,height:.6}:undefined,diagram:type==='diagram'?{nodes:[{id:'cli',label:'CLI'},{id:'app',label:'Application'}],edges:[{from:'cli',to:'app',evidence:'The CLI controls the Application.'}]}:undefined,contentMode:'developer',purpose:'Show real fixture',caption:'Fixture',captionPosition:i%2?'top-center':'bottom-center'}));
     // Missing originals should fall back after two local attempts, preserving all other clips.
     shots.push({...shots.find(s=>s.type==='media_fullscreen')!,id:'099',start:shots.length*.6,assetId:'missing'});
     const progress: string[] = [];
+    await assert.rejects(recordShots(id,shots,inventory,async text=>{progress.push(text);}),/Isolated media missing could not be captured/);
+    assert.ok(progress.some(p=>p.includes('retrying')));
+    shots.pop();
     const recordings = await recordShots(id,shots,inventory,async text=>{progress.push(text);});
     assert.equal(recordings.length,shots.length);
-    assert.ok(recordings.slice(0,-1).every(r=>!r.fallback),JSON.stringify(progress));
-    assert.equal(recordings.at(-1)!.attempts,2); assert.ok(recordings.at(-1)!.fallback);
-    assert.match(recordings.at(-1)!.fallbackReason || '',/missing|No such file/i);
+    const diagram=shots.find(s=>s.type==='diagram')!;assert.equal(recordings.find(r=>r.id===diagram.id)?.mediaIsolation,undefined,'Generated diagrams must not claim raw-image capture provenance');
+    const media=shots.find(s=>s.type==='media_fullscreen')!;assert.equal(recordings.find(r=>r.id===media.id)?.mediaIsolation?.assetId,media.assetId);
+    assert.ok(recordings.every(r=>!r.fallback),JSON.stringify(progress));
     const times = await Promise.all(recordings.map(r=>stat(path.join(dir,r.clip))));
     await recordShots(id,shots,inventory,async ()=>{});
     const reused = await Promise.all(recordings.map(r=>stat(path.join(dir,r.clip))));
@@ -58,8 +61,8 @@ test('all director treatments render real clips, retain captions, and retry only
     assert.equal(info.streams.find(s=>s.codec_type==='audio')?.sample_rate,'48000');
     assert.ok(Math.abs(Number(info.format.duration)-duration)<.1);
     const html = await readFile(path.join(dir,'composition/index.html'),'utf8');
-    assert.match(html,/caption-top-center/); assert.match(html,/top:440px/);
-    assert.match(await readFile(path.join(dir,'captions.ass'),'utf8'),/\\an8\\pos\(540,288\)/);
+    assert.doesNotMatch(html,/caption-top-center/);assert.match(html,/top:1344px/);assert.match(html,/width:1080px;height:1920px/);
+    assert.match(await readFile(path.join(dir,'captions.ass'),'utf8'),/\\an2\\pos\(474,1512\)/);
   } finally { server.close(); await rm(config.dataDir,{recursive:true,force:true}); Object.assign(config,original); }
 });
 
@@ -68,10 +71,10 @@ test('virtual camera changes the image pixels over time while hold remains stabl
   try {
     const source=path.join(dir,'source.png');
     await run('ffmpeg',['-y','-f','lavfi','-i','testsrc2=s=1600x1200','-frames:v','1','-threads','1',source]);
-    const shot:Shot={id:'001',sceneId:'fixture',start:0,duration:.6,url:'https://example.com',actions:[],caption:'',type:'zoom_region',framing:'detail',motion:'slow-push',focus:{x:.2,y:.1,width:.6,height:.8}};
-    async function pixels(file:string,time:string) { return (await promisify(execFile)('ffmpeg',['-v','error','-ss',time,'-i',file,'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'],{encoding:'buffer',maxBuffer:4_000_000})).stdout; }
+    const shot:Shot={id:'001',sceneId:'fixture',start:0,duration:.6,url:'https://example.com',actions:[],caption:'',type:'zoom_region',cameraMode:'detail',framing:'detail',motion:'slow-push',camera:{motion:'slow-push',duration:.6,offset:0,maxZoom:1.08,reason:'Inspect the explicitly narrated layer controls.',detailText:'layers',focus:{x:.2,y:.1,width:.3,height:.3}}};
+    async function pixels(file:string,time:string) { return (await promisify(execFile)('ffmpeg',['-v','error','-ss',time,'-i',file,'-frames:v','1','-f','rawvideo','-pix_fmt','rgb24','-'],{encoding:'buffer',maxBuffer:7_000_000})).stdout; }
     const pushed=path.join(dir,'push.mp4'), held=path.join(dir,'hold.mp4');
-    await renderCameraClip(source,pushed,shot); await renderCameraClip(source,held,{...shot,motion:'hold'});
+    await renderCameraClip(source,pushed,shot); await renderCameraClip(source,held,{...shot,cameraMode:'media',camera:undefined,motion:'hold'});
     assert.notDeepEqual(await pixels(pushed,'0'),await pixels(pushed,'0.5'));
     // H.264 may have a few quantization differences; a static decoded hold should be nearly identical.
     const a=await pixels(held,'0'),b=await pixels(held,'0.5');

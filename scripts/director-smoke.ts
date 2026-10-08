@@ -3,7 +3,7 @@ import path from 'node:path';
 import { config } from '../src/lib/config';
 import { createJob, getJob, jobDir, readArtifact, saveJob, invalidate } from '../src/lib/store';
 import { runPipeline } from '../src/pipeline';
-import { Inventory, Shot, DiversityReport, QAReport, ContinuityReport, StoryOutline } from '../src/lib/types';
+import { CoverageReport, Inventory, Shot, DiversityReport, QAReport, ContinuityReport, StoryOutline } from '../src/lib/types';
 
 config.dataDir = path.resolve('test-output/director-smoke');
 const job = process.env.DIRECTOR_RESUME_ID ? await getJob(process.env.DIRECTOR_RESUME_ID) : await createJob(process.argv[2] || 'https://github.com/storytold/photocraft');
@@ -25,6 +25,8 @@ assert.ok(diversity.passed && qa.passed);
 assert.ok(continuity.passed,JSON.stringify(continuity.issues));
 assert.ok(outline.visits.length && inventory.pages?.length);
 assert.equal(state.length,shots.length);
-assert.ok(shots.every(s=>s.duration<=4.5));
+const coverage=await readArtifact<CoverageReport>(job.id,'coverage-report.json');assert.ok(coverage.passed,JSON.stringify(coverage.issues));
+assert.ok(shots.every(s=>s.captionPosition==='bottom-center'));
+assert.ok(coverage.groups.every(g=>g.visualStart<=g.transcriptStart && g.visualEnd>=g.transcriptEnd-.025));
 if (inventory.assets?.some(a=>a.type==='image')) assert.ok(shots.some(s=>s.type==='media_fullscreen' || s.type==='zoom_region'));
 console.log(JSON.stringify({ assets:inventory.assets?.length,shots:shots.length,flow:shots.map(s=>`${s.walkthrough?.location.heading} → ${s.walkthrough?.role}: ${s.type}:${s.assetId}`),continuity,diversity,qa:qa.score,mp4:path.join(jobDir(job.id),'final.mp4')},null,2));

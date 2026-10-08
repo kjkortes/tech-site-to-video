@@ -8,10 +8,13 @@ import { createHash } from 'node:crypto';
 import { assetsFor } from './direct';
 import { renderCameraClip } from './camera';
 import { generatedScene } from './generated-scenes';
+import { captureSourceCode } from './source-code';
+import { codeVisualsAllowed, promotionalCaptureCSS } from './content-policy';
 
 export function shotSignature(shot: Shot) { return createHash('sha256').update(JSON.stringify(shot)).digest('hex'); }
 
 export async function recordShots(id: string, shots: Shot[], inventory: Inventory, onProgress: (detail: string) => Promise<void>): Promise<ShotResult[]> {
+  if(shots.some(s=>s.type==='code_focus' || assetsFor(inventory).find(a=>a.id===s.assetId)?.type==='code') && !codeVisualsAllowed(inventory.contentMode))throw new Error('Promotional capture rejects code visuals');
   const dir = jobDir(id); const clips = path.join(dir, 'clips'); await mkdir(clips, { recursive: true });
   const saved = await readArtifact<ShotResult[]>(id, 'recordings.json').catch(() => []);
   const results: ShotResult[] = []; const browser = await launchBrowser();
@@ -32,7 +35,20 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
           try {
             if (!asset) throw new Error('Selected visual asset is missing');
             let source = asset.localPath ? path.join(dir, asset.localPath) : undefined;
-            if (['diagram','code_focus'].includes(shot.type!)) {
+            let generated=false,codeFallback:string|undefined;
+            if(shot.type==='code_focus' && source && !await stat(source).then(s=>s.size>0).catch(()=>false)){source=undefined;codeFallback='Stored source-code image is unavailable';}
+            if(shot.type==='code_focus' && (!source || !await stat(source).then(s=>s.size>0).catch(()=>false)) && asset.selector) {
+              const context=await newContext(browser);
+              try {
+                const page=await context.newPage();await navigate(page,asset.pageUrl);await dismissConsent(page);
+                if(await consentObscuresPage(page))throw new Error('Consent dialog obscures source code');
+                source=path.join(clips,`${shot.id}-actual-code.png`);
+                const metadata=await captureSourceCode(page,asset.selector,source),info=await probe(source),stream=info.streams.find(s=>s.codec_type==='video')!;
+                asset.width=stream.width!;asset.height=stream.height!;asset.code={fontSize:metadata.fontSize*asset.width/metadata.width,lines:metadata.lines};
+              }catch(error){codeFallback=(error as Error).message;source=undefined;}finally{await context.close();}
+            }
+            if (shot.type==='diagram' || shot.type==='code_focus' && !source) {
+              generated=true;if(shot.type==='code_focus')codeFallback||='No usable source-code capture or stored selector';
               const context = await browser.newContext({ viewport: { width: 972, height: 1130 }, deviceScaleFactor: 2 });
               try {
                 const page = await context.newPage();
@@ -54,13 +70,13 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
               finally { await context.close(); }
             } else if (asset.type === 'section') {
               const context = await newContext(browser);
-              try { const page = await context.newPage(); await navigate(page, asset.pageUrl); await dismissConsent(page); if (await consentObscuresPage(page)) throw new Error('Consent dialog obscures the source'); for (const action of asset.actions || []) await perform(page, action); source = path.join(clips, `${shot.id}-source.png`); if (asset.selector) await page.locator(asset.selector).screenshot({ path: source, animations: 'disabled', timeout: 7000 }); else await page.screenshot({ path: source, animations: 'disabled' }); }
+              try { const page = await context.newPage(); await navigate(page, asset.pageUrl); await dismissConsent(page); if(!codeVisualsAllowed(inventory.contentMode))await page.addStyleTag({content:promotionalCaptureCSS}); if (await consentObscuresPage(page)) throw new Error('Consent dialog obscures the source'); for (const action of asset.actions || []) await perform(page, action); source = path.join(clips, `${shot.id}-source.png`); if (asset.selector) await page.locator(asset.selector).screenshot({ path: source, animations: 'disabled', timeout: 7000 }); else await page.screenshot({ path: source, animations: 'disabled' }); }
               finally { await context.close(); }
             }
             if (!source) throw new Error('Visual has no captured source');
             const clip = `clips/${shot.id}.mp4`;
-            await renderCameraClip(source, path.join(dir, clip), shot, ['video','gif'].includes(asset.type) || shot.type === 'diagram');
-            result = { id: shot.id, signature, kind: ['diagram','code_focus'].includes(shot.type!) ? 'generated' : 'asset', clip, trimStart: 0, duration: shot.duration, attempts: attempt, fallback: false, pageTitle: asset.description, captureMode, captureRevision, captureViewport: { ...viewport } };
+            await renderCameraClip(source, path.join(dir, clip), shot, ['video','gif'].includes(asset.type) || shot.type === 'diagram', ['video','gif'].includes(asset.type)?shot.sourceOffset||0:0,!generated?asset:undefined,shot.contextPreview?path.join(dir,shot.contextPreview):undefined);
+            result = { id: shot.id, signature, kind: generated ? 'generated' : 'asset', clip, trimStart: 0, duration: shot.duration, attempts: attempt, fallback: !!codeFallback, fallbackReason:codeFallback, mediaIsolation: !generated && ['image','gif','video'].includes(asset.type)?{assetId:asset.id,method:asset.captureMethod||'stored-media',layers:1}:undefined, pageTitle: asset.description, captureMode, captureRevision, captureViewport: { ...viewport } };
             break;
           } catch (error) { lastError = (error as Error).message; await onProgress(`Shot ${shot.id}: ${lastError.slice(0,180)}`); }
         }
@@ -72,6 +88,7 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
           try {
             const opened = Date.now();
             await navigate(page, shot.url); await dismissConsent(page);
+            if(!codeVisualsAllowed(inventory.contentMode))await page.addStyleTag({content:promotionalCaptureCSS});
             const liveClick = shot.type === 'click_demo' ? shot.actions.findLast(a => a.type === 'click') : undefined;
             for (const action of shot.actions) if (action !== liveClick) await perform(page, action);
             if(shot.type==='walkthrough' && shot.walkthrough) await positionAtSection(page,shot.walkthrough.transition?.from||shot.walkthrough.location);
@@ -98,9 +115,9 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
             const info = await probe(path.join(dir, clip));
             if (Number(info.format.duration) < trimStart + shot.duration - 0.2) throw new Error('Recorded shot is too short');
             let outputClip = clip;
-            if (shot.motion && shot.motion !== 'hold' || shot.focus || shot.highlight) {
+            if (shot.cameraMode === 'detail') {
               outputClip = `clips/${shot.id}-camera.mp4`;
-              await renderCameraClip(path.join(dir,clip),path.join(dir,outputClip),shot,true,trimStart);
+              await renderCameraClip(path.join(dir,clip),path.join(dir,outputClip),shot,true,trimStart,asset,shot.contextPreview?path.join(dir,shot.contextPreview):undefined);
             }
             result = { id: shot.id, signature, rawClip: clip, rawTrimStart: trimStart, kind: 'browser', consentObscured: false, clip: outputClip, trimStart: outputClip === clip ? trimStart : 0, duration: shot.duration, attempts: attempt, fallback: false, pageTitle, captureMode, captureRevision, captureViewport: { ...viewport } };
             break;
@@ -111,6 +128,8 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
         }
       }
       if (!result) {
+        if(assetShot && asset && ['image','gif','video'].includes(asset.type))throw new Error(`Isolated media ${asset.id} could not be captured: ${lastError}`);
+        if(!codeVisualsAllowed(inventory.contentMode))throw new Error(`Promotional capture failed after retries; refusing an unchecked page/code fallback: ${lastError}`);
         const scene = inventory.scenes.find(s => s.id === shot.sceneId);
         if (!scene) throw new Error('No discovered fallback visual');
         const clip = `clips/${shot.id}.mp4`;

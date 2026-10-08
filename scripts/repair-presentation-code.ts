@@ -1,0 +1,30 @@
+// Diagnostic recapture of selected source-code/context-inset shots; reuse every successful unrelated stage/clip.
+import path from 'node:path';
+import { config } from '../src/lib/config';
+import { jobDir,readArtifact,writeArtifact,getJob,saveJob } from '../src/lib/store';
+import type { Shot,ShotResult,Inventory,Transcript,Script,Research } from '../src/lib/types';
+import { addEvidenceContext } from '../src/pipeline/evidence-context';
+import { readableCodeRange } from '../src/pipeline/source-code';
+import { recordShots } from '../src/pipeline/record';
+import { editVideo } from '../src/pipeline/edit';
+import { checkVideo } from '../src/pipeline/qa';
+import { withModelSettings } from '../src/lib/llm';
+import { validateCoverage } from '../src/pipeline/coverage';
+import { validateRetention } from '../src/pipeline/retention';
+import { validatePlan } from '../src/pipeline/direct';
+config.dataDir=path.resolve('test-output/director-smoke');config.database='';
+const id=process.argv[2];if(!id)throw new Error('Pass a sample job ID');const job=await getJob(id);if(!job)throw new Error('Sample job missing');
+const shots=await readArtifact<Shot[]>(id,'shot-plan.json'),inventory=await readArtifact<Inventory>(id,'inventory.json'),speech=await readArtifact<Transcript>(id,'transcript.json'),script=await readArtifact<Script>(id,'script.json'),research=await readArtifact<Research>(id,'research.json');
+const extended=addEvidenceContext(research,inventory);if(extended.length){console.log('Extended literal citation context:',extended);await writeArtifact(id,'research.json',research);}
+const bad=shots.filter(s=>s.type==='code_focus'||s.contextPreview).map(s=>s.id);
+for(const shot of shots.filter(s=>s.type==='code_focus'))shot.codeRange=readableCodeRange(inventory.assets!.find(a=>a.id===shot.assetId)!,shot.codeRange!);
+await writeArtifact(id,'shot-plan.json',shots);
+await writeArtifact(id,'recordings.json',(await readArtifact<ShotResult[]>(id,'recordings.json')).filter(r=>!bad.includes(r.id)));
+const recordings=await recordShots(id,shots,inventory,async detail=>console.log(detail));
+await editVideo(id,job.title,shots,recordings,speech);
+const qa=await withModelSettings(job.llm!,()=>checkVideo(id,research,inventory,script,speech,shots,recordings));
+await writeArtifact(id,'qa.json',qa);await writeArtifact(id,'coverage-report.json',validateCoverage(shots,inventory,speech,research));await writeArtifact(id,'retention-report.json',validateRetention(shots,inventory,speech,script));await writeArtifact(id,'diversity.json',validatePlan(shots,inventory,speech));
+await writeArtifact(id,'walkthrough-state.json',shots.map(s=>({shotId:s.id,narration:s.narration,selectedVisual:s.assetId,type:s.type,reason:s.rationale,support:s.support,sourceInset:s.contextPreview,...s.walkthrough})));
+job.qaScore=qa.score;await saveJob(job);
+console.log(JSON.stringify({passed:qa.passed,score:qa.score,replaced:bad,mp4:path.join(jobDir(id),'final.mp4')},null,2));
+if(!qa.passed)throw new Error('Repaired sample failed QA');

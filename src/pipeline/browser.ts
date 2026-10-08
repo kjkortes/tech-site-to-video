@@ -5,7 +5,7 @@ import { config } from '../lib/config';
 import { videoLayout } from './video-layout';
 
 export const captureMode = 'desktop' as const;
-export const captureRevision = 2;
+export const captureRevision = 6;
 export const viewport = videoLayout.viewport;
 export function matchesCapture(value: { captureMode?: 'mobile' | 'desktop'; captureViewport?: { width: number; height: number }; captureRevision?: number }) {
   return value.captureRevision === captureRevision && value.captureMode === captureMode && value.captureViewport?.width === viewport.width && value.captureViewport?.height === viewport.height;
@@ -53,19 +53,6 @@ async function prepareGitHubCapture(page: Page) {
   if (new URL(page.url()).hostname !== 'github.com') return;
   const readme = page.locator('article.markdown-body').filter({ visible: true }).first();
   if (!await readme.count()) return;
-  await readme.evaluate(article => {
-    const content = article.closest('[data-component="SplitPageLayout.Content"]');
-    content?.setAttribute('data-frameforge-github-content', '');
-    content?.parentElement?.setAttribute('data-frameforge-github-layout', '');
-  });
-  if (!await page.locator('#frameforge-github-capture').count()) {
-    await page.addStyleTag({ content: `
-      [data-frameforge-github-layout] { grid-template-columns: minmax(0, 1fr) !important; }
-      [data-frameforge-github-layout] > [data-position="end"] { display: none !important; }
-      [data-frameforge-github-content] { width: 100% !important; max-width: none !important; grid-column: 1 / -1 !important; }
-      [data-frameforge-github-content] [data-width], article.markdown-body { max-width: none !important; }
-    ` }).then(style => style.evaluate(el => { (el as HTMLStyleElement).id = 'frameforge-github-capture'; }));
-  }
   await readme.evaluate(article => {
     let anchor: HTMLElement | null = null;
     try { anchor = document.getElementById(decodeURIComponent(location.hash.slice(1))); } catch { /* Invalid hashes use the overview. */ }

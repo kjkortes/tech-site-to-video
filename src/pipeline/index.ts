@@ -4,6 +4,7 @@ import { withJobLock } from '../lib/lock';
 import { research } from './research';
 import { explore, refreshInventoryCapture } from './explore';
 import { captureMode, matchesCapture } from './browser';
+import { cameraSummary, sourceTypeFor } from './camera-policy';
 import { mapRevision } from './document-map';
 import { writeScript, validateScript } from './script';
 import { generateSpeech } from './tts';
@@ -19,6 +20,10 @@ import { resolveModelSettings } from '../lib/model-settings';
 import { withModelSettings } from '../lib/llm';
 import { buildOutline, storyRevision } from './story';
 import { validateContinuity } from './walkthrough';
+import { validateCoverage } from './coverage';
+import { validateRetention } from './retention';
+import { verticalSafeArea } from './safe-area';
+import { addEvidenceContext } from './evidence-context';
 
 export async function runPipeline(id: string) {
   return withJobLock(id, async () => {
@@ -77,7 +82,13 @@ export async function runPipeline(id: string) {
         await invalidate(job, 'DIRECTING');
         refreshingCapture = false;
       }
+      inventory.contentMode=job.contentMode||'promotional';
+      inventory.sourceUrl=job.url;
+      inventory.sourceType=sourceTypeFor(inventory);
+      await writeArtifact(id,'inventory.json',inventory);
       await writeArtifact(id,'page-map.json',inventory.pages);
+      const extended=addEvidenceContext(facts,inventory);
+      if(extended.length){await writeArtifact(id,'research.json',facts);event(job,`Added immediate source context to citations ${extended.join(', ')}`);await saveJob(job);}
       const savedScript=await readArtifact<Script>(id,'script.json').catch(()=>null);
       let scriptNeedsRefresh=!!savedScript && savedScript.revision!==storyRevision;
       if(savedScript?.revision===storyRevision) {
@@ -86,7 +97,7 @@ export async function runPipeline(id: string) {
         try {validateScript(savedScript,facts,inventory);await writeArtifact(id,'script.json',savedScript);}catch{scriptNeedsRefresh=true;}
       }
       if(savedScript && scriptNeedsRefresh && job.completed.includes('SCRIPTING')) {
-        event(job,'Updating the old fact-order script to a document walkthrough; research is retained');
+        event(job,'Updating narration to the concise connected story arc; research is retained');
         await invalidate(job,'SCRIPTING');
       }
       const script = await stage<Script>('SCRIPTING', 'script.json', async () => {
@@ -106,12 +117,18 @@ export async function runPipeline(id: string) {
       });
       async function saveWalkthroughState() {
         await writeArtifact(id,'walkthrough-report.json',validateContinuity(shots,inventory,speech));
-        await writeArtifact(id,'walkthrough-state.json',shots.map(s=>({shotId:s.id,narration:s.narration,selectedVisual:s.assetId,visualSection:inventory.assets?.find(a=>a.id===s.assetId)?.sectionId||inventory.scenes.find(c=>c.id===s.sceneId)?.sectionId,type:s.type,reason:s.rationale,...s.walkthrough})));
+        await writeArtifact(id,'coverage-report.json',validateCoverage(shots,inventory,speech,facts));
+        await writeArtifact(id,'retention-report.json',validateRetention(shots,inventory,speech,script));
+        await writeArtifact(id,'camera-report.json',cameraSummary(shots,inventory));
+        await writeArtifact(id,'safe-area.json',verticalSafeArea);
+        await writeArtifact(id,'walkthrough-state.json',shots.map(s=>({shotId:s.id,narration:s.narration,selectedVisual:s.assetId,visualSection:inventory.assets?.find(a=>a.id===s.assetId)?.sectionId||inventory.scenes.find(c=>c.id===s.sceneId)?.sectionId,type:s.type,cameraMode:s.cameraMode,zoom:s.camera?.maxZoom||1,detailReason:s.camera?.reason,reason:s.rationale,focalArea:s.camera?.focus||s.focus,duration:s.duration,entryAction:s.walkthrough?.transition||s.walkthrough?.role,exitAction:s.walkthrough?.nextLocation||s.walkthrough?.returnTarget,support:s.support,sourceContext:s.sourceContext,...s.walkthrough})));
       }
       const diagnostics = validatePlan(shots, inventory, speech);
       if (!diagnostics.passed) throw new Error('Saved visual plan is invalid; regenerate visuals.');
       await writeArtifact(id, 'diversity.json', diagnostics);
       await saveWalkthroughState();
+      const coverage=validateCoverage(shots,inventory,speech,facts),retention=validateRetention(shots,inventory,speech,script);
+      if(!coverage.passed || !retention.passed)throw new Error(`Presentation plan failed: ${[...coverage.issues,...retention.issues].filter(i=>i.severity==='error').map(i=>i.detail).join('; ')}`);
       let recordings = await stage<ShotResult[]>('RECORDING', 'recordings.json', () => recordShots(id, shots, inventory, async detail => { event(job, detail); await saveJob(job); }));
       if (!await stat(path.join(jobDir(id), 'final.mp4')).then(s => s.size > 0).catch(() => false)) job.completed = job.completed.filter(s => !['EDITING', 'QA'].includes(s));
       if (!job.completed.includes('EDITING')) await stage('EDITING', null, () => editVideo(id, job.title, shots, recordings, speech));
@@ -119,7 +136,7 @@ export async function runPipeline(id: string) {
       if (!qa.passed) {
         const failed = qa.checks.filter(c => !c.passed && c.severity === 'error');
         if (failed.some(c => ['sources', 'semantic'].includes(c.id))) throw new Error(`Narration QA failed: ${failed.map(c => c.detail).join('; ')}. Regenerate the script.`);
-        if (failed.some(c=>['visual-plan','shot-signatures','walkthrough'].includes(c.id))) throw new Error('Visual direction QA failed. Regenerate visuals while preserving narration.');
+        if (failed.some(c=>['visual-plan','shot-signatures','walkthrough','visual-coverage','retention','camera-policy','visible-source-area'].includes(c.id))) throw new Error('Visual direction QA failed. Regenerate visuals while preserving narration.');
         // Re-edit media defects once; re-record only clips whose coverage/page checks failed.
         event(job, 'Repairing failed media checks'); job.status = 'EDITING'; await saveJob(job);
         const repairedDiagrams: string[] = [];

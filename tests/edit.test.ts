@@ -11,11 +11,11 @@ import { config } from '../src/lib/config';
 import { jobDir } from '../src/lib/store';
 import { probe, run } from '../src/lib/process';
 import { launchBrowser, viewport } from '../src/pipeline/browser';
-import { fitTitlesScript } from '../src/pipeline/video-layout';
+import { fitTitlesScript, pagePanel } from '../src/pipeline/video-layout';
 import { editVideo } from '../src/pipeline/edit';
 import { Shot, ShotResult, Transcript } from '../src/lib/types';
 
-test('rendered desktop page keeps both edges, rounded corners and matching HTML framing', async () => {
+test('rendered portrait page fills the viewport with overlay identity and matching HTML framing', async () => {
   const originalDir = config.dataDir; const originalRenderer = config.renderer;
   config.dataDir = await mkdtemp(path.join(tmpdir(), 'frameforge-edit-')); config.renderer = 'ffmpeg';
   try {
@@ -33,11 +33,10 @@ test('rendered desktop page keeps both edges, rounded corners and matching HTML 
     assert.ok(Math.abs(Number(info.format.duration) - 1) < .1);
     const { stdout: pixels } = await promisify(execFile)('ffmpeg', ['-v', 'error', '-i', path.join(dir, 'poster.jpg'), '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { encoding: 'buffer', maxBuffer: 7_000_000 });
     const rgb = (x: number, y: number) => [...pixels.subarray((y * 1080 + x) * 3, (y * 1080 + x) * 3 + 3)];
-    assert.ok(rgb(70, 500)[0] > 180 && rgb(70, 500)[1] < 70, 'Left page edge must remain visible');
-    assert.ok(rgb(1010, 500)[1] > 180 && rgb(1010, 500)[0] < 70, 'Right page edge must remain visible');
-    assert.ok(rgb(500, 1830)[0] > 180 && rgb(500, 1830)[1] > 180, 'Bottom of the page must remain visible');
-    assert.ok(rgb(56, 1870)[0] < 120 && rgb(56, 1870)[1] < 120, 'Rounded bottom corner must expose the navy frame');
-    assert.ok(rgb(92, 225)[0] > 180, 'Chrome must show the red traffic light');
+    assert.ok(rgb(pagePanel.x+15,500)[0] > 180 && rgb(pagePanel.x+15,500)[1] < 70, 'Left page edge must remain visible');
+    assert.ok(rgb(pagePanel.x+pagePanel.width-15,500)[1] > 180 && rgb(pagePanel.x+pagePanel.width-15,500)[0] < 70, 'Right page edge must remain visible');
+    assert.ok(rgb(500,pagePanel.y+pagePanel.height-30)[0] > 180 && rgb(500,pagePanel.y+pagePanel.height-30)[1] > 180, 'Bottom of the page must remain visible');
+    assert.ok(rgb(2,1918)[0]>180 && rgb(2,1918)[1]>180,'Source fills the bottom corner without a decorative border');
 
     const browser = await launchBrowser();
     try {
@@ -48,14 +47,15 @@ test('rendered desktop page keeps both edges, rounded corners and matching HTML 
       await page.addScriptTag({ content: fitTitlesScript });
       const frame = await page.evaluate(() => ({
         title: document.querySelector('.title')!.textContent,
-        address: document.querySelector('.address span')!.textContent,
+        chrome: document.querySelector('.chrome'),
         titleFits: document.querySelector('.title')!.scrollWidth <= document.querySelector('.title')!.clientWidth,
         page: (() => { const r = document.querySelector('video')!.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })(),
       }));
       assert.equal(frame.title, 'heygen-com/hyperframes');
-      assert.equal(frame.address, 'github.com/heygen-com/hyperframes');
-      assert.ok(frame.titleFits); assert.deepEqual(frame.page, { x: 54, y: 262, width: 972, height: 1610 });
+      assert.equal(frame.chrome,null);
+      assert.ok(frame.titleFits); assert.deepEqual(frame.page, pagePanel);
       assert.doesNotMatch(await readFile(path.join(dir, 'composition/index.html'), 'utf8'), /Old scene label|Explore the project/);
+      const caption=await page.locator('.caption span').boundingBox();assert.ok(caption && caption.x>=96 && caption.x+caption.width<=852 && caption.y>=1344 && caption.y+caption.height<=1536,'Actual rendered subtitle bounds respect the lower safe zone');
     } finally { await browser.close(); }
   } finally { await rm(config.dataDir, { recursive: true, force: true }); config.dataDir = originalDir; config.renderer = originalRenderer; }
 });

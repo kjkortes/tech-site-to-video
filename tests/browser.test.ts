@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { launchBrowser, newContext, navigate, perform, matchesCapture, viewport } from '../src/pipeline/browser';
+import { launchBrowser, newContext, navigate, perform, matchesCapture, viewport, captureRevision } from '../src/pipeline/browser';
 import { pagePanel } from '../src/pipeline/video-layout';
 import { probe, run } from '../src/lib/process';
 
@@ -55,10 +55,11 @@ test('capture migration replaces mobile and outdated desktop clips', () => {
   assert.equal(matchesCapture({ captureMode: 'desktop' }), false);
   assert.equal(matchesCapture({ captureMode: 'desktop', captureViewport: { width: 1000, height: 1240 } }), false);
   assert.equal(matchesCapture({ captureMode: 'desktop', captureViewport: { ...viewport } }), false, 'Old captures still include GitHub chrome');
-  assert.equal(matchesCapture({ captureMode: 'desktop', captureViewport: { ...viewport }, captureRevision: 2 }), true);
+  assert.equal(matchesCapture({captureMode:'desktop',captureViewport:{...viewport},captureRevision:2}),false,'Old layout intrudes into social platform UI');
+  assert.equal(matchesCapture({ captureMode: 'desktop', captureViewport: { ...viewport }, captureRevision }), true);
 });
 
-test('GitHub captures frame the README opening and reclaim the right sidebar space', async () => {
+test('GitHub captures preserve native README layout and source context', async () => {
   const browser = await launchBrowser();
   try {
     const context = await newContext(browser);
@@ -78,9 +79,9 @@ test('GitHub captures frame the README opening and reclaim the right sidebar spa
     await context.route('**/*', route => route.fulfill({ contentType: 'text/html', body: fixture }));
     const page = await context.newPage();
     await navigate(page, 'https://github.com/storytold/photocraft');
-    assert.equal(await page.locator('[data-component="SplitPageLayout.Pane"]').isVisible(), false);
+    assert.equal(await page.locator('[data-component="SplitPageLayout.Pane"]').isVisible(), true);
     const article = await page.locator('article').boundingBox();
-    assert.ok(article && article.width >= 1100, `README must fill the space reclaimed from the sidebar: ${article?.width}`);
+    assert.ok(article && article.width === 888, `README retains its native width: ${article?.width}`);
     assert.ok(article && article.y >= 0 && article.y <= 100, `README opening should be at the top: ${article?.y}`);
     const hero = await page.locator('.hero').boundingBox();
     assert.ok(hero && hero.y > 0 && hero.y + hero.height < viewport.height, 'Opening screenshot must be in frame');

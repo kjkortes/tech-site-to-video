@@ -19,12 +19,12 @@ export function currentModelSettings(): ModelSettings {
 export type ModelTask = 'research' | 'mapping' | 'navigation' | 'visual' | 'script' | 'motion' | 'qa';
 export function creativeInstruction(task: ModelTask = 'script') {
   if (['research','mapping','qa'].includes(task)) return 'Task profile: high precision, low variance. Extract and verify literal evidence. No creative additions or stylistic reinterpretation.';
-  if (['navigation','visual'].includes(task)) return 'Task profile: restrained navigation. Preserve document order and the active section. Choose local contextual visuals. Never create unexpected jumps for variety; hold when that best supports continuity.';
+  if (['navigation','visual'].includes(task)) return 'Task profile: restrained navigation. Preserve document order and the active section. Choose local contextual visuals. Never create unexpected jumps for variety; hold the relevant source until its complete spoken explanation ends; clarity and continuity take priority over changing shots.';
   if (task === 'motion') return 'Task profile: balanced attention direction. Use subtle movement only when it clarifies the current content; a static shot is valid.';
   const directions = {
     restrained: 'Keep narration direct, concise and explanatory, with literal source-backed descriptions.',
-    balanced: 'Use an engaging product-first hook, natural connective phrasing and a concise useful takeaway within the supplied walkthrough.',
-    bold: 'Use inventive source-grounded hook wording and vivid, economical explanations within the supplied walkthrough. Keep the product-first opening and fixed visit order.',
+    balanced: 'Use an engaging product-first hook, natural connective phrasing, factual curiosity with a quick payoff, and an escalating concise story within the supplied walkthrough.',
+    bold: 'Use inventive source-grounded hook wording and vivid, economical explanations and a connected story arc within the supplied walkthrough. Keep the product-first opening and fixed visit order.',
   };
   return `Script creativity: ${directions[currentModelSettings().creativity]} Creativity changes wording only; every factual claim requires evidence. Never change the outline, navigation or section ownership.`;
 }

@@ -8,15 +8,15 @@ const inventory: Inventory = { notes: [], scenes: [{ id: 'scene-1', sourceId: 's
 ] };
 const transcript: Transcript = { duration: 24, timingSource: 'fixture', words: [], segments: [
   { id: 'seg-1', text: 'Layers masks and adjustment controls', sceneId: 'scene-1', claimIds: [], start: .2, end: 12 },
-  { id: 'seg-2', text: 'Export output rendering', sceneId: 'scene-1', claimIds: [], start: 12, end: 24 },
+  { id: 'seg-2', text: 'For export, Export output rendering', sceneId: 'scene-1', claimIds: [], start: 12, end: 24 },
 ] };
-test('director opens with standalone README media and maps every beat to purposeful short shots', () => {
+test('director opens on the source page and preserves intentional narration slots', () => {
   const shots = direct(transcript, inventory);
-  assert.equal(shots[0].assetId, 'layers');
-  assert.equal(shots[0].type, 'media_fullscreen');
-  assert.ok(shots.some(s => s.walkthrough?.role === 'return'));
+  assert.equal(shots[0].assetId, 'scene-1');
+  assert.equal(shots[0].type, 'walkthrough');
+  assert.ok(shots.filter(s=>s.cameraMode==='walkthrough').reduce((n,s)=>n+s.duration,0)>=12);
   assert.ok(shots.some(s => s.assetId === 'output' && s.segmentId === 'seg-2'));
-  assert.ok(shots.every(s => s.duration <= 4.5 && s.purpose && s.segmentId));
+  assert.ok(shots.every(s => s.purpose && s.segmentId));
   assert.equal(shots[0].start, 0);
   assert.equal(shots.at(-1)!.start + shots.at(-1)!.duration, 24);
   assert.ok(shots.every((s, i) => !i || Math.abs(s.start - shots[i-1].start - shots[i-1].duration) < 1e-6));
@@ -42,15 +42,15 @@ test('diagnostics catch repeated framing and wrong-source visual support', async
   assert.equal(validatePlan(shots, wrong, transcript).passed, false);
 });
 
-test('captions split at cuts and follow safe placement without retiming narration', async () => {
+test('captions remain in the fixed lower band across cuts without retiming narration', async () => {
   const { directedCaptions, toAss } = await import('../src/pipeline/captions');
   const shots = direct(transcript,inventory).map((s,i)=>({...s,captionPosition:i?'top-center' as const:'bottom-right' as const}));
   const speech = {...transcript,words:[{text:'Layers',start:0,end:8}]};
   const captions = directedCaptions(speech,shots);
-  assert.equal(captions[0].position,'bottom-right'); assert.equal(captions[1].position,'top-center');
-  assert.equal(captions[0].end,shots[0].duration); assert.equal(captions[1].start,shots[1].start);
-  assert.match(toAss(captions),/\\an8\\pos\(540,288\)/);
-  assert.match(toAss(captions),/\\an3\\pos\(975,1740\)/);
+  assert.equal(captions.length,1);assert.equal(captions[0].position,'bottom-center');
+  assert.equal(captions[0].start,0);assert.equal(captions[0].end,8);
+  assert.match(toAss(captions),/\\an2\\pos\(474,1512\)/);
+  assert.doesNotMatch(toAss(captions),/\\an8/);
 });
 test('model director rejects fabricated visuals and falls back to an executable saved intent', async () => {
   const { visualDirector } = await import('../src/pipeline/direct'); const { config } = await import('../src/lib/config');
@@ -60,8 +60,8 @@ test('model director rejects fabricated visuals and falls back to an executable 
     globalThis.fetch=async()=>Response.json({choices:[{message:{content:JSON.stringify({choices:[{shotId:'001',assetId:'invented',type:'media_fullscreen',purpose:'Fake',rationale:'',motion:'slow-push',captionPosition:'bottom-center'}, {shotId:'003',assetId:'output',type:'media_fullscreen',purpose:'Export output',rationale:'Show output',motion:'hold',captionPosition:'bottom-center'}]})}}]});
     const plan=await visualDirector(transcript,inventory,{title:'Fixture',description:'',mode:'extractive',claims:[],sources:[]});
     assert.ok(plan.diagnostics.passed); assert.ok(plan.notes.some(n=>n.includes('unknown')));
-    assert.equal(plan.shots[0].assetId,'layers');
-    assert.equal(plan.shots[2].assetId,'scene-1','Model must retain the locked browser visit'); assert.ok(plan.notes.some(n=>n.includes('continuity-breaking')));
+    assert.equal(plan.shots[0].assetId,'scene-1');
+    assert.equal(plan.shots[0].cameraMode,'walkthrough','Model cannot replace the source-page intro');
   } finally {Object.assign(config,original);globalThis.fetch=fetch;}
 });
 test('diagram relationships require cited quotes and narrated labels', async()=>{

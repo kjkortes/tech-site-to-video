@@ -15,9 +15,9 @@ const url = 'https://example.test/editor';
 const section = (id: string, order: number, text: string) => ({ id, pageId: 'page-1', sourceId: 'source-1', heading: id, order, selector: `#${id}`, scrollY: order * 500, endY: (order+1)*500, text, assetIds: [], sceneId: `scene-${order+1}` });
 const sections = [section('intro',0,'Editor is an offline image editor.'),section('features',1,'Layers and masks edit images.'),section('commands',2,'The CLI runs shared commands.'),section('status',3,'Editor is in early alpha.')];
 const media = (id: string, sectionId: string, type: VisualAsset['type'], description: string): VisualAsset => ({id,sectionId,type,description,sceneId:sections.find(s=>s.id===sectionId)!.sceneId,sourceId:'source-1',url,pageUrl:url,localPath:`assets/${id}.png`,features:[description],width:1600,height:1000,quality:.9,confidence:.9,animated:type==='gif',canEnlarge:true,text:type==='code'?'editor cli --layers':undefined});
-const inventory: Inventory = { notes:[],mapRevision:1,pages:[{id:'page-1',sourceId:'source-1',url,title:'Editor',order:0,sections}],scenes:sections.map(s=>({id:s.sceneId,url,title:s.heading,description:s.text,sourceId:s.sourceId,sectionId:s.id,actions:[{type:'scroll',text:s.heading,y:s.scrollY}],screenshot:`exploration/${s.sceneId}.png`})),assets:[media('product','intro','image','Offline image editor'),media('layers','features','image','Layers masks'),media('animation','features','gif','Layers masks edit'),media('cli','commands','code','CLI shared commands')] };
+const inventory: Inventory = { contentMode:'developer', notes:[],mapRevision:1,pages:[{id:'page-1',sourceId:'source-1',url,title:'Editor',order:0,sections}],scenes:sections.map(s=>({id:s.sceneId,url,title:s.heading,description:s.text,sourceId:s.sourceId,sectionId:s.id,actions:[{type:'scroll',text:s.heading,y:s.scrollY}],screenshot:`exploration/${s.sceneId}.png`})),assets:[media('product','intro','image','Offline image editor'),media('layers','features','image','Layers masks'),media('animation','features','gif','Layers masks edit'),media('cli','commands','code','CLI shared commands')] };
 const research: Research = { title:'Editor',description:'',mode:'extractive',sources:[{id:'source-1',url,title:'Editor',text:sections.map(s=>s.text).join(' ')}],claims:sections.map((s,i)=>({id:`c${i}`,sourceId:'source-1',text:s.text,quote:s.text})) };
-const transcript: Transcript = { duration:44,words:[],timingSource:'fixture',segments:sections.map((s,i)=>({id:`seg${i}`,text:i===0?'This is Editor, an offline image editor.':s.text,sceneId:s.sceneId,sectionId:s.id,visitId:`visit-${i+1}`,claimIds:[`c${i}`],start:i*11,end:(i+1)*11})) };
+const transcript: Transcript = { duration:44,words:[],timingSource:'fixture',segments:sections.map((s,i)=>({id:`seg${i}`,text:i===0?'This is Editor, an offline image editor.':i===1?'For editing, '+s.text:i===2?'For automation, '+s.text:s.text,sceneId:s.sceneId,sectionId:s.id,visitId:`visit-${i+1}`,claimIds:[`c${i}`],start:i*11,end:(i+1)*11})) };
 
 test('DOM map and each grid image retain their own nearest section and document order', async()=>{
   const browser=await launchBrowser();
@@ -33,7 +33,7 @@ test('DOM map and each grid image retain their own nearest section and document 
   } finally { await browser.close(); }
 });
 test('outline follows source sections even when research claims arrive in arbitrary order', async()=>{
-  const outline=await buildOutline({...research,claims:[research.claims[2],research.claims[0],research.claims[3],research.claims[1]]},inventory);
+  const outline=await withModelSettings({provider:'extractive',model:'',effort:'default',creativity:'balanced'},()=>buildOutline({...research,claims:[research.claims[2],research.claims[0],research.claims[3],research.claims[1]]},inventory));
   assert.deepEqual(outline.visits.map(v=>v.sectionId),sections.map(s=>s.id));
 });
 test('README gallery images before their headings belong to their own feature cells, not neighbouring features',async()=>{
@@ -57,12 +57,12 @@ test('research link discovery deduplicates documents and skips irrelevant GitHub
 test('walkthrough retains context, advances forward, and returns from local media cutaways',()=>{
   const shots=direct(transcript,inventory);const report=validateContinuity(shots,inventory,transcript);
   assert.ok(report.passed,JSON.stringify(report.issues));
-  assert.ok(report.browserDuration/transcript.duration>=.6);
-  assert.ok(shots[0].duration<=2 && shots[0].assetId==='product');
+  assert.ok(shots.some(s=>s.framing==='context' || s.sourceContext));
+  assert.equal(shots[0].cameraMode,'walkthrough');assert.equal(shots[0].assetId,'scene-1');
   assert.ok(shots.some(s=>s.assetId==='animation' && s.type==='video_playback'));
-  assert.ok(shots.some(s=>s.walkthrough?.role==='return'));
+  assert.ok(shots.some(s=>s.walkthrough?.returnTarget));
   for(const shot of shots.filter(s=>s.walkthrough?.role==='cutaway')) assert.equal(inventory.assets!.find(a=>a.id===shot.assetId)?.sectionId,shot.walkthrough!.location.sectionId);
-  assert.ok(shots.some(s=>s.walkthrough?.transition && s.walkthrough.transition.duration<=2));
+  assert.ok(shots.some(s=>s.sourceContext || s.walkthrough?.transition && s.walkthrough.transition.duration<=2));
   assert.ok(validatePlan(shots,inventory,transcript).passed);
 });
 test('continuity rejects reverse travel, foreign cutaways and unintroduced code',()=>{
@@ -77,11 +77,11 @@ test('paragraph navigation stays forward and purposeful browser holds do not ear
   const scoped={...inventory,assets:[],pages:[{...inventory.pages![0],sections:[{...sections[1],anchors:[{selector:'#layers',scrollY:900,text:'Layers preserve original pixels'},{selector:'#masks',scrollY:1300,text:'Masks target selected areas'}]}]}],scenes:[inventory.scenes[1]]};
   const speech={...transcript,duration:14,segments:[{...transcript.segments[1],start:0,end:14}],words:[{text:'Layers',start:3.6,end:4},{text:'preserve',start:4,end:4.2},{text:'pixels',start:4.2,end:4.4},{text:'Masks',start:7.2,end:7.5},{text:'selected',start:7.5,end:7.7},{text:'areas',start:7.7,end:8}]};
   const shots=direct(speech,scoped);
-  assert.ok(shots.some(s=>s.walkthrough?.location.selector==='#layers'));
-  assert.ok(shots.some(s=>s.walkthrough?.location.selector==='#masks'));
+  assert.ok(shots.every(s=>s.walkthrough?.location.selector==='#features' || s.intro));
+  assert.ok(shots.every(s=>!s.focus),'Do not automatically enlarge individual paragraphs');
   const report=validatePlan(shots,scoped,speech);assert.ok(report.passed,JSON.stringify(report.issues));
   assert.ok(!validatePlan(shots,scoped,speech).issues.some(i=>i.code==='repeated-framing'||i.code==='long-context'));
-  const reversed=shots.map((s,i)=>i===shots.length-1?{...s,walkthrough:{...s.walkthrough!,location:{...s.walkthrough!.location,scrollY:500}}}:s);
+  const reversed=shots.map((s,i)=>i===shots.length-1?{...s,walkthrough:{...s.walkthrough!,location:{...s.walkthrough!.location,scrollY:100}}}:s);
   assert.ok(validateContinuity(reversed,scoped,speech).issues.some(i=>i.code==='backward-travel'));
 });
 test('model visual selection cannot insert distant media into a contextual cutaway',async()=>{

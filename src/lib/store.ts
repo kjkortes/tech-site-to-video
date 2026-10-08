@@ -3,7 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { config } from './config';
-import { Job, Stage, stages } from './types';
+import { Job, Stage, stages, ContentMode } from './types';
 import { atomicJson } from './json';
 import { resolveModelSettings } from './model-settings';
 import { ModelOptions } from './model-options';
@@ -34,9 +34,9 @@ export async function listJobs(): Promise<Job[]> {
   const jobs = await Promise.all((await readdir(dir)).filter(id => /^[0-9a-f-]{36}$/.test(id)).map(getJob));
   return jobs.filter((j): j is Job => !!j).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100);
 }
-export async function createJob(url: string, overrides?: Partial<ModelOptions>): Promise<Job> {
+export async function createJob(url: string, overrides?: Partial<ModelOptions>, contentMode:ContentMode='promotional'): Promise<Job> {
   const llm = await resolveModelSettings(overrides);
-  const job: Job = { llm, id: randomUUID(), url, title: new URL(url).hostname, status: 'RECEIVED', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), revision: 1, completed: [], progress: 0, detail: 'Waiting for the video worker', events: [] };
+  const job: Job = { llm, contentMode, id: randomUUID(), url, title: new URL(url).hostname, status: 'RECEIVED', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), revision: 1, completed: [], progress: 0, detail: 'Waiting for the video worker', events: [] };
   await saveJob(job); return job;
 }
 export async function readArtifact<T>(id: string, name: string): Promise<T> {
@@ -49,7 +49,7 @@ export function event(job: Job, message: string) {
 }
 export const artifactNames: Record<Stage, string[]> = {
   RESEARCHING: ['research.json'], EXPLORING: ['inventory.json', 'page-map.json', 'exploration', 'assets'], SCRIPTING: ['script.json','story-outline.json'],
-  TTS: ['transcript.json', 'narration.wav', 'tts-progress.json', 'speech'], DIRECTING: ['shot-plan.json', 'director-report.json', 'diversity.json','walkthrough-report.json','walkthrough-state.json'],
+  TTS: ['transcript.json', 'narration.wav', 'tts-progress.json', 'speech'], DIRECTING: ['shot-plan.json', 'director-report.json', 'diversity.json','walkthrough-report.json','walkthrough-state.json','coverage-report.json','retention-report.json','safe-area.json'],
   RECORDING: ['recordings.json', 'clips'], EDITING: ['final.mp4', 'poster.jpg', 'captions.srt', 'captions.ass', 'composition', 'render'], QA: ['qa.json'],
 };
 export async function invalidate(job: Job, from: Stage) {

@@ -68,3 +68,10 @@ export function pagesFor(inventory: Inventory): DocumentPage[] {
 export function locationFor(page: DocumentPage, section: PageSection): WalkLocation {
   return {pageId:page.id,sectionId:section.id,sectionIndex:section.order,url:page.url,scrollY:section.scrollY,selector:section.selector,heading:section.heading};
 }
+
+// Browser redirects commonly remove a repository trailing slash or URL hash.
+export function entryPageFor(inventory: Inventory, fallback?: DocumentPage) {
+  if(!inventory.sourceUrl)return fallback||pagesFor(inventory)[0];
+  const key=(url:string)=>{const u=new URL(url);return u.origin+u.pathname.replace(/\/$/,'');};
+  return pagesFor(inventory).find(p=>key(p.url)===key(inventory.sourceUrl!));
+}

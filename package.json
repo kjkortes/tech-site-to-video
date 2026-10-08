@@ -12,7 +12,7 @@
     "build": "next build",
     "start": "concurrently --kill-others -n web,worker \"next start --hostname 127.0.0.1\" \"npm run worker\"",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --test --test-concurrency=2 tests/*.test.ts",
     "test:e2e": "tsx --env-file-if-exists=.env scripts/smoke.ts",
     "test:director": "tsx --env-file-if-exists=.env scripts/director-smoke.ts",
     "test:renderer": "tsx scripts/renderer-smoke.ts",

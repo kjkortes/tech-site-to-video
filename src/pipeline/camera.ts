@@ -1,33 +1,32 @@
-import { Shot } from '../lib/types';
-import { run } from '../lib/process';
-import { validRegion } from './direct';
-import { panelFor } from './video-layout';
+import { Shot, VisualAsset } from '../lib/types';
+import { run, probe } from '../lib/process';
+import { videoLayout } from './video-layout';
+import { sourceCodeFilter } from './source-code';
+import { cameraGeometry, SourceSize } from './framing';
 
-export function cameraFilter(shot: Shot) {
-  const panel = panelFor(shot.framing); const frames = Math.max(1, Math.round(shot.duration * 30) - 1);
-  const progress = `min(1,on/${frames})`;
-  const filters: string[] = [];
-  // Source-space annotations move with the camera and cannot drift away from the UI.
-  if (shot.highlight && validRegion(shot.highlight)) {
-    const r = shot.highlight;
-    filters.push(`drawbox=x=iw*${r.x}:y=ih*${r.y}:w=iw*${r.width}:h=ih*${r.height}:color=0x60a5fa@0.95:t=6`);
+export function cameraFilter(shot: Shot, source:SourceSize=videoLayout.viewport) {
+  const g=cameraGeometry(shot,source,1);
+  const filters:string[]=[];
+  if(shot.highlight && g.mode==='detail') {const h=shot.highlight;filters.push(`drawbox=x=iw*${h.x}:y=ih*${h.y}:w=iw*${h.width}:h=ih*${h.height}:color=0x60a5fa@0.95:t=4`);}
+  const areaHeight=g.mode==='walkthrough'?1920:1208;
+  const top=g.mode==='walkthrough'?'(oh-ih)/2':`108+(${areaHeight}-ih)/2`;
+  filters.push(`scale=1080:${areaHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=1080:1920:(ow-iw)/2:${top}:color=0x0c1b35`, 'fps=30');
+  if(g.mode==='detail' && g.zoom>1) {
+    const duration=shot.camera?.duration||shot.duration,offset=shot.camera?.offset||0;
+    const p=`min(1,max(0,(on/30+${offset})/${duration}))`,eased=`(${p}*${p}*(3-2*${p}))`;
+    const zoom=shot.camera?.motion==='slow-pull'?`${g.zoom}+(1-${g.zoom})*${eased}`:`1+(${g.zoom}-1)*${eased}`;
+    // Extra canvas permits a gentle lateral reframe without forcing cover crop.
+    filters.push('pad=2160:3840:(ow-iw)/2:(oh-ih)/2:color=0x0c1b35');
+    filters.push(`zoompan=z='2*(${zoom})':x='iw/4+iw/2*${g.x}*${eased}':y='ih/4+ih/2*${g.y}*${eased}':d=1:s=1080x1920:fps=30`);
   }
-  if (shot.focus && validRegion(shot.focus)) {
-    const r = shot.focus;
-    filters.push(`crop=w=trunc(iw*${r.width}/2)*2:h=trunc(ih*${r.height}/2)*2:x=iw*${r.x}:y=ih*${r.y}`);
-  }
-  filters.push(`scale=${panel.width * 2}:${panel.height * 2}:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${panel.width * 2}:${panel.height * 2}:(ow-iw)/2:(oh-ih)/2:color=0x0c1b35`);
-  const motion = shot.motion || 'hold';
-  const zoom = motion === 'slow-push' ? `1+0.12*${progress}` : motion === 'slow-pull' ? `1.12-0.12*${progress}` : motion.startsWith('pan') ? '1.12' : '1';
-  let x = 'iw/2-iw/zoom/2', y = 'ih/2-ih/zoom/2';
-  if (motion === 'pan-right') x = `(iw-iw/zoom)*${progress}`;
-  if (motion === 'pan-left') x = `(iw-iw/zoom)*(1-${progress})`;
-  if (motion === 'pan-down') y = `(ih-ih/zoom)*${progress}`;
-  if (motion === 'pan-up') y = `(ih-ih/zoom)*(1-${progress})`;
-  filters.push('fps=30');
-  filters.push(`zoompan=z='${zoom}':x='${x}':y='${y}':d=1:s=${panel.width}x${panel.height}:fps=30,setsar=1,format=yuv420p`);
+  filters.push('setsar=1','format=yuv420p');
   return filters.join(',');
 }
-export async function renderCameraClip(source: string, destination: string, shot: Shot, animated = false, sourceStart = 0) {
-  await run('ffmpeg', ['-y', ...(animated ? ['-stream_loop','-1'] : ['-loop','1','-framerate','30']), ...(sourceStart > 0 ? ['-ss',String(sourceStart)] : []), '-i', source, '-vf', cameraFilter(shot), '-t', String(shot.duration + .15), '-an', '-c:v', 'libx264', '-threads', '2', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', destination]);
+export async function renderCameraClip(source:string,destination:string,shot:Shot,animated=false,sourceStart=0,sourceAsset?:VisualAsset,_legacyOrigin?:string) {
+  const size=await probe(source);const stream=size.streams.find(s=>s.codec_type==='video');
+  if(!stream?.width||!stream.height)throw new Error('Camera source has no usable dimensions');
+  const filter=shot.type==='code_focus' && sourceAsset?sourceCodeFilter(shot,sourceAsset):cameraFilter(shot,{width:stream.width,height:stream.height});
+  // Exactly one input visual. Legacy contextPreview is never composited here.
+  const args=['-y',...(animated?['-stream_loop','-1']:['-loop','1','-framerate','30']),...(sourceStart>0?['-ss',String(sourceStart)]:[]),'-i',source,'-vf',filter];
+  await run('ffmpeg',[...args,'-t',String(shot.duration+.15),'-an','-c:v','libx264','-threads','2','-preset','veryfast','-crf','20','-pix_fmt','yuv420p',destination]);
 }
