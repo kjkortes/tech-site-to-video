@@ -10,6 +10,8 @@ export const config = {
   llmProvider: process.env.LLM_PROVIDER || 'auto',
   codexBin: process.env.CODEX_BIN || 'codex',
   codexModel: process.env.CODEX_MODEL || '',
+  codexEffort: process.env.CODEX_REASONING_EFFORT || 'medium',
+  creativity: process.env.LLM_CREATIVITY || 'balanced',
   codexTimeout: Number(process.env.CODEX_TIMEOUT_MS || 180000),
   renderer: process.env.VIDEO_RENDERER || 'ffmpeg',
   database: process.env.DATABASE_URL || '', redis: process.env.REDIS_URL || '',

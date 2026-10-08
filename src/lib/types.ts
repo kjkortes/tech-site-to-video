@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { modelOptionsSchema, ModelSettings } from './model-options';
 
 export const stages = ['RESEARCHING', 'EXPLORING', 'SCRIPTING', 'TTS', 'DIRECTING', 'RECORDING', 'EDITING', 'QA'] as const;
 export type Stage = typeof stages[number];
@@ -8,9 +9,10 @@ export const stageLabels: Record<Stage, string> = {
   TTS: 'Generating narration', DIRECTING: 'Planning the shots', RECORDING: 'Capturing directed shots',
   EDITING: 'Assembling the video', QA: 'Checking picture and sound',
 };
-export const createJobSchema = z.object({ url: z.string().trim().url().max(2048) });
-export const actionSchema = z.object({ action: z.enum(['approve', 'skip', 'resume', 'regenerate']), scope: z.enum(['full', 'script', 'voice', 'visuals']).default('full') });
+export const createJobSchema = z.object({ url: z.string().trim().url().max(2048), llm: modelOptionsSchema.partial().optional() });
+export const actionSchema = z.object({ action: z.enum(['approve', 'skip', 'resume', 'regenerate']), scope: z.enum(['full', 'script', 'voice', 'visuals']).default('full'), llm: modelOptionsSchema.partial().optional() });
 export interface Job {
+  llm?: ModelSettings;
   id: string; url: string; title: string; status: Status; createdAt: string; updatedAt: string;
   revision: number; completed: Stage[]; error?: string; failedStage?: Stage;
   duration?: number; qaScore?: number; progress: number; detail: string;

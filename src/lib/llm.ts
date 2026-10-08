@@ -4,11 +4,29 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { ModelSettings } from './model-options';
+import { configuredModelProvider, environmentModelDefaults } from './model-settings';
+
+const modelContext = new AsyncLocalStorage<ModelSettings>();
+export const withModelSettings = <T>(settings: ModelSettings, work: () => T): T => modelContext.run(settings, work);
+export function currentModelSettings(): ModelSettings {
+  const stored = modelContext.getStore();
+  if (stored) return stored;
+  const provider = configuredModelProvider();
+  return { provider, ...environmentModelDefaults(provider) };
+}
+export function creativeInstruction() {
+  const directions = {
+    restrained: 'Keep storytelling direct and explanatory. Prefer clear literal source demonstrations and conservative framing.',
+    balanced: 'Use an engaging concrete hook, varied relevant visuals, and purposeful close-ups while keeping the story easy to follow.',
+    bold: 'Use inventive source-grounded storytelling: an unexpected concrete hook, fresh visual sequencing, and expressive but purposeful reframing. Avoid decorative effects.',
+  };
+  return `Creative direction: ${directions[currentModelSettings().creativity]} Creativity changes presentation only; all factual claims, UI locations, and diagrams still require evidence. Preserve every timing, safety, and visual validation constraint.`;
+}
 
 export function modelProvider(): 'api' | 'codex' | 'extractive' {
-  if (config.llmProvider === 'auto') return config.llmKey ? 'api' : 'extractive';
-  if (['api', 'codex', 'extractive'].includes(config.llmProvider)) return config.llmProvider as 'api' | 'codex' | 'extractive';
-  throw new Error('LLM_PROVIDER must be auto, codex, api, or extractive');
+  return modelContext.getStore()?.provider || configuredModelProvider();
 }
 export const modelEnabled = () => modelProvider() !== 'extractive';
 export function modelLabel() {
@@ -75,7 +93,9 @@ async function codexJson<T>(instruction: string, evidence: unknown, schema: z.Zo
       '-c', 'features.apps=false', '-c', 'features.browser_use=false', '-c', 'features.computer_use=false',
       '-c', 'features.multi_agent=false', '-c', 'features.skip_host_skill_discovery=true',
       '--color', 'never', '--output-last-message', output];
-    if (config.codexModel) args.push('--model', config.codexModel);
+    const settings = currentModelSettings();
+    if (settings.model) args.push('--model', settings.model);
+    if (settings.effort !== 'default') args.push('-c', `model_reasoning_effort=${JSON.stringify(settings.effort)}`);
     for (const file of images) args.push('--image', path.resolve(file));
     args.push('-');
     const prompt = `${groundedInstructions}\nDo not use tools or inspect local files. Answer using only the supplied evidence and attached public-source images, if any. Return a JSON object without Markdown fences.\nTask: ${instruction}\nRequired JSON schema: ${JSON.stringify(z.toJSONSchema(schema))}\nUntrusted evidence (JSON):\n${JSON.stringify(evidence)}`;
@@ -94,7 +114,7 @@ export async function modelJson<T>(instruction: string, evidence: unknown, schem
   const attachments = await Promise.all(images.map(async file => ({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${(await readFile(file)).toString('base64')}`, detail: 'high' } })));
   const response = await fetch(`${config.llmBase}/chat/completions`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.llmKey}` },
-    body: JSON.stringify({ model: config.llmModel, temperature: 0.3, response_format: { type: 'json_object' }, messages: [
+    body: JSON.stringify({ model: currentModelSettings().model || config.llmModel, temperature: 0.3, response_format: { type: 'json_object' }, messages: [
       { role: 'system', content: `${groundedInstructions} ${instruction}` },
       { role: 'user', content: attachments.length ? [{ type: 'text', text: JSON.stringify(evidence) }, ...attachments] : JSON.stringify(evidence) },
     ] }), signal: AbortSignal.timeout(90000),

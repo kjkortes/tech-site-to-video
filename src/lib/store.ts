@@ -1,21 +1,19 @@
-import { mkdir, readFile, writeFile, rename, readdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { config } from './config';
 import { Job, Stage, stages } from './types';
+import { atomicJson } from './json';
+import { resolveModelSettings } from './model-settings';
+import { ModelOptions } from './model-options';
+export { atomicJson } from './json';
 
 let pool: Pool | undefined;
 export const db = () => pool ||= new Pool({ connectionString: config.database });
 export function jobDir(id: string) {
   if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error('Invalid project identifier');
   return path.join(config.dataDir, 'jobs', id);
-}
-export async function atomicJson(file: string, value: unknown) {
-  await mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${randomUUID()}.tmp`;
-  await writeFile(tmp, JSON.stringify(value, null, 2));
-  await rename(tmp, file);
 }
 export async function saveJob(job: Job) {
   job.updatedAt = new Date().toISOString();
@@ -36,8 +34,9 @@ export async function listJobs(): Promise<Job[]> {
   const jobs = await Promise.all((await readdir(dir)).filter(id => /^[0-9a-f-]{36}$/.test(id)).map(getJob));
   return jobs.filter((j): j is Job => !!j).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 100);
 }
-export async function createJob(url: string): Promise<Job> {
-  const job: Job = { id: randomUUID(), url, title: new URL(url).hostname, status: 'RECEIVED', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), revision: 1, completed: [], progress: 0, detail: 'Waiting for the video worker', events: [] };
+export async function createJob(url: string, overrides?: Partial<ModelOptions>): Promise<Job> {
+  const llm = await resolveModelSettings(overrides);
+  const job: Job = { llm, id: randomUUID(), url, title: new URL(url).hostname, status: 'RECEIVED', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), revision: 1, completed: [], progress: 0, detail: 'Waiting for the video worker', events: [] };
   await saveJob(job); return job;
 }
 export async function readArtifact<T>(id: string, name: string): Promise<T> {

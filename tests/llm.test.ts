@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import { config } from '../src/lib/config';
-import { modelJson, modelProvider, modelEnabled, modelLabel, checkCodexLogin } from '../src/lib/llm';
+import { modelJson, modelProvider, modelEnabled, modelLabel, checkCodexLogin, withModelSettings, creativeInstruction } from '../src/lib/llm';
 
 test('provider selection preserves API/excerpt defaults and explicitly enables Codex without an API key', () => {
   const saved = { ...config };
@@ -46,6 +46,13 @@ process.stdin.on('end', () => {
     process.env.OPENAI_API_KEY = 'unused'; process.env.CODEX_API_KEY = 'unused'; process.env.CODEX_ACCESS_TOKEN = 'unused'; process.env.LLM_API_KEY = 'unused';
     const schema = z.object({ answer: z.string() });
     assert.equal((await checkCodexLogin()).ok, true);
+    await withModelSettings({ provider: 'codex', model: 'fixture-director', effort: 'high', creativity: 'bold' }, () => modelJson(`Choose shots. ${creativeInstruction()}`, {}, schema));
+    const directedRequest = JSON.parse(await readFile(capture, 'utf8'));
+    assert.equal(directedRequest.args[directedRequest.args.indexOf('--model') + 1], 'fixture-director');
+    assert.ok(directedRequest.args.includes('model_reasoning_effort="high"'));
+    assert.match(directedRequest.input, /inventive.*storytelling/);
+    assert.equal(config.codexModel, '', 'Per-job choices must not mutate global configuration');
+    assert.doesNotMatch(creativeInstruction(), /inventive.*storytelling/, 'Creative settings must leave their request scope');
     assert.deepEqual(await modelJson('Check the evidence', { text: 'Literal `$(echo hello)` source text' }, schema), { answer: 'Evidence checked' });
     await modelJson('Inspect the attached visual', {}, schema, [path.join(directory, 'public-source.jpg')]);
     const request = JSON.parse(await readFile(capture, 'utf8'));
@@ -82,6 +89,24 @@ process.stdin.on('end', () => {
     for (const key of Object.keys(process.env)) if (!(key in oldEnv)) delete process.env[key];
     Object.assign(process.env, oldEnv); await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('concurrent model requests keep per-job choices isolated', async () => {
+  const saved = { ...config }; const originalFetch = globalThis.fetch;
+  try {
+    config.llmProvider = 'api'; config.llmKey = 'test-key';
+    globalThis.fetch = async (_url, init) => {
+      const body = JSON.parse(init!.body as string);
+      await new Promise(resolve => setTimeout(resolve, body.model === 'job-a' ? 20 : 1));
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ answer: body.model }) } }] });
+    };
+    const schema = z.object({ answer: z.string() });
+    const results = await Promise.all(['job-a', 'job-b'].map(model => withModelSettings({ provider: 'api', model, effort: 'default', creativity: 'balanced' }, async () => {
+      await new Promise(resolve => setTimeout(resolve, model === 'job-a' ? 1 : 10));
+      return modelJson('Check', {}, schema);
+    })));
+    assert.deepEqual(results, [{ answer: 'job-a' }, { answer: 'job-b' }]);
+  } finally { Object.assign(config, saved); globalThis.fetch = originalFetch; }
 });
 
 test('API provider still uses its own endpoint and model and rejects a missing key', async () => {

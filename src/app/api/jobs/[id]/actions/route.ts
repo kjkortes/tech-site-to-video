@@ -6,6 +6,7 @@ import path from 'node:path';
 import { withJobLock } from '@/lib/lock';
 import { enqueue } from '@/lib/queue';
 import { apiError, requireLocalMutation } from '@/lib/api';
+import { resolveModelSettings } from '@/lib/model-settings';
 export const runtime = 'nodejs';
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -15,6 +16,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       const job = await getJob(id);
       if (!job) throw new Error('Project not found');
       if (!['READY_FOR_REVIEW', 'APPROVED', 'SKIPPED', 'FAILED'].includes(job.status)) throw new Error('Wait for generation to finish before changing this project');
+      if (input.llm) {
+        if (!['regenerate', 'resume'].includes(input.action)) throw new Error('Model settings can only change when resuming or regenerating');
+        job.llm = await resolveModelSettings(input.llm, job.llm);
+      }
       if (input.action === 'approve') {
         if (job.status !== 'READY_FOR_REVIEW') throw new Error('Only a video that passed QA can be approved');
         const qa = await readArtifact<QAReport>(id, 'qa.json');

@@ -14,11 +14,15 @@ import { sleep } from '../lib/process';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { jobDir } from '../lib/store';
+import { resolveModelSettings } from '../lib/model-settings';
+import { withModelSettings } from '../lib/llm';
 
 export async function runPipeline(id: string) {
   return withJobLock(id, async () => {
     const job = await getJob(id);
     if (!job || ['APPROVED', 'SKIPPED', 'READY_FOR_REVIEW', 'FAILED'].includes(job.status)) return;
+    if (!job.llm) { job.llm = await resolveModelSettings(); await saveJob(job); }
+    return withModelSettings(job.llm, async () => {
     let active: Stage = 'RESEARCHING';
     let refreshingCapture = false;
     async function stage<T>(name: Stage, filename: string | null, work: () => Promise<T>): Promise<T> {
@@ -122,5 +126,6 @@ export async function runPipeline(id: string) {
       event(job, job.error); await saveJob(job);
     }
     return job;
+    });
   });
 }

@@ -28,6 +28,18 @@ npm run dev
 
 Open **http://127.0.0.1:3000**. `npm run dev:web` starts only the interface; `npm run worker` starts only the worker. Production: `npm run build`, then `npm start`. The studio detects missing worker/narration services and explains how to start them. If using an existing Chrome installation, set `CHROMIUM_EXECUTABLE_PATH` in `.env` instead of downloading Playwright's Chromium.
 
+## Model and creative-direction controls
+
+Open **Studio settings → Default model & direction** to choose a GPT model, reasoning effort, and creative direction, then **Save defaults**. New videos inherit these settings. Expand **Video model** below the URL form to override them for a submission. In an existing project's Overview, expand the model settings and then use **Regenerate** (or **Resume** for a failed job) to apply new choices to the stages you rerun. Changing defaults does not change existing jobs.
+
+The initial Codex defaults are **Codex default model**, **Medium reasoning effort**, and **Balanced creative direction**, unless overridden by `CODEX_MODEL`, `CODEX_REASONING_EFFORT`, or `LLM_CREATIVITY`. The dropdown reads visible, image-capable models and supported reasoning levels from the local Codex model catalog; it does not hard-code an aging list of model names. Open Codex to refresh its catalog, then reload the studio. A custom model ID remains available when the catalog is missing or a new model has not appeared yet; account availability is confirmed by Codex when used.
+
+**Reasoning effort** is sent as Codex's `model_reasoning_effort` setting. **Creative direction** (Restrained / Balanced / Bold) steers the script and visual-director instructions rather than pretending to be a Codex temperature knob. Research and QA remain evidence-driven at every creative setting. All model stages in a job use its saved model/effort. Per-job settings are isolated even with concurrent workers; successful cached stages retain their previous outputs on scoped regeneration.
+
+Saved defaults live in `DATA_DIR/model-defaults.json`, separated by provider; job snapshots live in the job payload (JSON or PostgreSQL). Web and workers must share `DATA_DIR`, as they already do for video artifacts. **Restore environment defaults** clears the UI defaults for the configured provider. Credentials, provider, and API endpoint remain server configuration. The existing OpenAI-compatible API path accepts custom model IDs and creative direction; API reasoning-effort controls and OpenRouter-specific model discovery are not implemented yet.
+
+`npm run test:settings-ui` exercises the studio in Chromium against isolated HTTP fixtures while the web app is running on port 3000 (`STUDIO_TEST_URL` can override it). It checks defaults, reload, submission overrides, regeneration, supported efforts, custom IDs, reset, and mobile layout without creating real videos or changing workspace settings.
+
 ## What is implemented
 
 - Next.js review studio with persisted projects, worker progress, playable preview, source evidence, timestamped script, inspectable **Shots** tab, QA report, approval/download, skipping, and scoped regeneration.

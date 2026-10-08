@@ -2,6 +2,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { ArrowUpRight, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, Clapperboard, Clock3, Download, ExternalLink, Film, Github, Link2, LoaderCircle, MonitorPlay, MoreHorizontal, Play, Plus, RotateCcw, Settings2, ShieldCheck, Sparkles, Volume2, X } from 'lucide-react';
 import { Job, Research, Inventory, Script, Transcript, QAReport, Shot, DiversityReport, stages, stageLabels } from '@/lib/types';
+import { ModelOptions, StudioModelSettings } from '@/lib/model-options';
+import { ModelControls } from './model-controls';
 
 type Detail = { job: Job; research: Research | null; inventory: Inventory | null; script: Script | null; transcript: Transcript | null; qa: QAReport | null; shots?: Shot[] | null; director?: (DiversityReport & { notes: string[] }) | null; diversity?: DiversityReport | null; };
 type Health = { worker: boolean; tts: boolean; ttsState: string; model: string; modelReady: boolean; modelDetail: string; renderer: string; };
@@ -17,8 +19,16 @@ export default function Studio() {
   const [filter, setFilter] = useState('all'); const [tab, setTab] = useState('overview');
   const [regenOpen, setRegenOpen] = useState(false); const [settingsOpen, setSettingsOpen] = useState(false);
   const [notice, setNotice] = useState(''); const [time, setTime] = useState(0); const [loaded, setLoaded] = useState(false);
+  const [modelSettings, setModelSettings] = useState<StudioModelSettings | null>(null);
+  const [newOptions, setNewOptions] = useState<ModelOptions | null>(null);
+  const [defaultsDraft, setDefaultsDraft] = useState<ModelOptions | null>(null);
+  const [jobOptions, setJobOptions] = useState<ModelOptions | null>(null);
+  const [settingsBusy, setSettingsBusy] = useState(false); const [settingsError, setSettingsError] = useState('');
   const input = useRef<HTMLInputElement>(null); const job = detail?.job;
   const studioReady = !!health?.worker && !!health?.tts && health?.modelReady !== false;
+  const newModel = newOptions || modelSettings?.defaults;
+  const selectedModel = jobOptions || (job?.llm ? { model: job.llm.model, effort: job.llm.effort, creativity: job.llm.creativity } : modelSettings?.defaults);
+  const modelName = (options?: ModelOptions) => options?.model ? modelSettings?.models.find(m => m.id === options.model)?.name || options.model : 'Codex default';
   const refresh = useCallback(async () => {
     try {
       const response = await fetch('/api/jobs'); const body = await response.json();
@@ -36,12 +46,18 @@ export default function Studio() {
     check(); const timer = setInterval(check, 10000); return () => clearInterval(timer);
   }, []);
   useEffect(() => { if (!selected && jobs.length) setSelected(jobs[0].id); }, [jobs, selected]);
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/settings').then(async r => { const data = await r.json(); if (!r.ok) throw new Error(data.error); if (!cancelled) setModelSettings(data); }).catch(e => { if (!cancelled) setError(e.message); });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => { setJobOptions(null); }, [job?.id, job?.revision]);
   useEffect(() => { setTab('overview'); setTime(0); setRegenOpen(false); }, [selected]);
   useEffect(() => { if (notice) { const timer = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(timer); } }, [notice]);
   async function generate(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError('');
     try {
-      const response = await fetch('/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+      const response = await fetch('/api/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, llm: newOptions || undefined }) });
       const data = await response.json(); if (!response.ok) throw new Error(data.error);
       setSelected(data.job.id); setDetail({ job: data.job, research: null, inventory: null, script: null, transcript: null, qa: null }); setUrl(''); await refresh();
     } catch (error) { setError((error as Error).message); } finally { setBusy(false); }
@@ -49,11 +65,21 @@ export default function Studio() {
   async function act(action: string, scope = 'full') {
     if (!job) return; setBusy(true); setError(''); setRegenOpen(false);
     try {
-      const response = await fetch(`/api/jobs/${job.id}/actions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, scope }) });
+      const response = await fetch(`/api/jobs/${job.id}/actions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, scope, llm: ['regenerate', 'resume'].includes(action) ? jobOptions || undefined : undefined }) });
       const data = await response.json(); if (!response.ok) throw new Error(data.error);
       setDetail(d => d ? { ...d, job: data.job } : null);
       setNotice(action === 'approve' ? 'Video approved. Your MP4 is ready to download.' : action === 'skip' ? 'Video skipped.' : action === 'resume' ? 'Resuming from saved progress.' : 'Regeneration queued. Completed upstream work is saved.'); await refresh();
     } catch (error) { setError((error as Error).message); } finally { setBusy(false); }
+  }
+  async function saveDefaults(reset = false) {
+    if (!modelSettings || !defaultsDraft && !reset) return;
+    setSettingsBusy(true); setSettingsError('');
+    try {
+      const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaults: reset ? null : defaultsDraft }) });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error);
+      setModelSettings(data); setDefaultsDraft(null);
+      setNotice(reset ? 'Environment defaults restored for new videos.' : 'Model defaults saved for new videos.');
+    } catch (error) { setSettingsError((error as Error).message); } finally { setSettingsBusy(false); }
   }
   const readyCount = jobs.filter(j => j.status === 'READY_FOR_REVIEW').length;
   const filtered = jobs.filter(j => filter === 'all' || (filter === 'review' ? j.status === 'READY_FOR_REVIEW' : j.status === 'APPROVED'));
@@ -70,18 +96,22 @@ export default function Studio() {
         <button className={filter === 'approved' ? 'nav-item active' : 'nav-item'} onClick={() => setFilter('approved')}><CheckCircle2 size={18}/> Approved <span>{jobs.filter(j => j.status === 'APPROVED').length}</span></button>
       </nav>
       <div className="sidebar-note"><div className="tiny-film"><Play size={15} fill="currentColor"/></div><strong>A URL. A story. A video.</strong><p>Research, narration, recording, and editing. Already handled.</p><span>Made for your next discovery.</span></div>
-      <button className="settings-link" onClick={() => setSettingsOpen(true)}><Settings2 size={17}/> Studio settings</button>
+      <button className="settings-link" onClick={() => { setDefaultsDraft(null); setSettingsError(''); setSettingsOpen(true); }}><Settings2 size={17}/> Studio settings</button>
       <div className="local-profile"><div className="avatar">L</div><div><strong>Local workspace</strong><span>Your files stay on this machine</span></div><span className="online-dot"/></div>
     </aside>
     <main>
-      <header className="topbar"><span>Workspace <ChevronRight size={14}/> Video studio</span><div><span className={`service-dot ${studioReady ? 'ok' : ''}`}/>{studioReady ? 'Studio ready' : 'Setup needed'}<button className="icon-button" aria-label="Show studio settings" onClick={() => setSettingsOpen(true)}><Settings2 size={18}/></button></div></header>
+      <header className="topbar"><span>Workspace <ChevronRight size={14}/> Video studio</span><div><span className={`service-dot ${studioReady ? 'ok' : ''}`}/>{studioReady ? 'Studio ready' : 'Setup needed'}<button className="icon-button" aria-label="Show studio settings" onClick={() => { setDefaultsDraft(null); setSettingsError(''); setSettingsOpen(true); }}><Settings2 size={18}/></button></div></header>
       <div className="workspace">
         <section className="intro"><div><h1>Your next video starts with a link.</h1><p>Turn a website or GitHub project into a story worth watching.</p></div><span className="format-pill"><Film size={15}/> Shorts & reels</span></section>
         <section className="create-panel" aria-label="Create a video">
           <form onSubmit={generate}><div className="url-field"><Link2 size={19}/><input ref={input} type="url" required maxLength={2048} value={url} onChange={e => setUrl(e.target.value)} placeholder="Paste a website or GitHub URL" aria-label="Website or GitHub URL"/><span className="url-shortcut"><Github size={16}/></span></div><button className="primary generate" disabled={busy}>{busy ? <LoaderCircle size={17} className="spin"/> : <Sparkles size={17}/>} Generate video</button></form>
           <div className="create-meta"><span><MonitorPlay size={14}/> 1080 × 1920</span><span><Clock3 size={14}/> About 60 seconds</span><span><Volume2 size={14}/> Narrated & captioned</span><span className="review-meta"><ShieldCheck size={14}/> You have the final say</span></div>
+          {modelSettings && newModel && <details className="model-details"><summary><Settings2 size={14}/> Video model <span>{modelName(newModel)} · {newModel.effort} effort · {newModel.creativity}</span></summary>
+            <ModelControls value={newModel} onChange={setNewOptions} models={modelSettings.models} provider={modelSettings.provider} disabled={busy}/>
+            <div className="model-actions"><span>{newOptions ? 'Overrides saved defaults for this submission.' : 'Using saved studio defaults.'}</span><button className="text-button" onClick={() => setNewOptions(null)} disabled={!newOptions || busy}>Use studio defaults</button></div>
+          </details>}
         </section>
-        {health && (!health.worker || !health.tts || !health.modelReady) && <div className="setup-banner"><Circle size={14}/><span>{!health.worker ? 'Start the video worker to process new projects.' : !health.tts ? 'Start your local Kokoro service to generate narration.' : health.modelDetail}</span><button onClick={() => setSettingsOpen(true)}>View setup <ArrowUpRight size={13}/></button></div>}
+        {health && (!health.worker || !health.tts || !health.modelReady) && <div className="setup-banner"><Circle size={14}/><span>{!health.worker ? 'Start the video worker to process new projects.' : !health.tts ? 'Start your local Kokoro service to generate narration.' : health.modelDetail}</span><button onClick={() => { setDefaultsDraft(null); setSettingsError(''); setSettingsOpen(true); }}>View setup <ArrowUpRight size={13}/></button></div>}
         {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
         <div className="section-heading"><div><h2>{filter === 'review' ? 'Ready for your review' : filter === 'approved' ? 'Approved videos' : 'Your videos'}</h2><span>{filtered.length} {filtered.length === 1 ? 'project' : 'projects'}</span></div><span className="autosave"><span/> Progress saved automatically</span></div>
         <section className="editor">
@@ -102,6 +132,11 @@ export default function Studio() {
                 {tab === 'overview' && <div className="detail-content">
                   {!job && <><h4>From discovery to done.</h4><p className="muted">Paste a public link. Come back to a finished demo, with narration, captions, and a clean edit.</p><div className="process-list">{[{ icon: Link2, title: 'Give us the link', text: 'A website, tool, or open-source project.' }, { icon: Clapperboard, title: 'Watch the story come together', text: 'The best visuals, paired with a sourced script.' }, { icon: CheckCircle2, title: 'Review. Approve. Share.', text: 'One final decision. A ready-to-use MP4.' }].map(({ icon: Icon, title, text }, i) => <div key={title}><span className="process-icon"><Icon size={19}/></span><div><strong>{title}</strong><p>{text}</p></div><span className="step-number">{i + 1}</span></div>)}</div><div className="output-note"><Film size={17}/><span>Made for YouTube Shorts, Facebook Reels, and TikTok.</span></div></>}
                   {job && <><div className="video-stats"><div><span>Duration</span><strong>{job.duration ? formatTime(job.duration) : '≈ 01:00'}</strong></div><div><span>QA checks</span><strong>{job.qaScore !== undefined ? `${job.qaScore}%` : 'Pending'}</strong></div><div><span>Format</span><strong>9:16</strong></div></div>
+                    {modelSettings && selectedModel && <details className="model-details project-model"><summary><Settings2 size={13}/> {job.llm ? modelName(job.llm) : 'Legacy model settings'}<span>{job.llm?.effort || 'legacy defaults'} · {job.llm?.creativity || 'balanced'}</span></summary>
+                      <ModelControls value={selectedModel} onChange={setJobOptions} models={modelSettings.models} provider={job.llm?.provider || modelSettings.provider} disabled={active || busy}/>
+                      <p className="model-help">{active ? 'Saved choices are in use for this video.' : 'Changes apply when you resume or regenerate. Saved stages are kept according to the regeneration scope.'}</p>
+                      {!active && <button className="text-button" onClick={() => setJobOptions(modelSettings.defaults)} disabled={busy}>Use current studio defaults</button>}
+                    </details>}
                     {job.status === 'FAILED' && <div className="failure-detail"><strong>Generation paused</strong><p>{job.error}</p><button className="secondary" disabled={busy} onClick={() => act('resume')}><RotateCcw size={14}/> Resume generation</button></div>}
                     {active && <div className="generation-progress"><div><span>{job.detail}</span><strong>{Math.round(job.progress * 100)}%</strong></div><progress max="1" value={job.progress}/></div>}
                     <div className="stage-list">{stages.map(stage => <div key={stage} className={job.completed.includes(stage) ? 'done' : job.status === stage ? 'working' : ''}>{job.completed.includes(stage) ? <CheckCircle2 size={15}/> : job.status === stage ? <LoaderCircle size={15} className="spin"/> : <Circle size={15}/>}<span>{stageLabels[stage]}</span>{job.completed.includes(stage) && <Check size={12}/>}</div>)}</div>
@@ -120,6 +155,6 @@ export default function Studio() {
       </div>
     </main>
     {notice && <div className="toast" role="status"><CheckCircle2 size={18}/>{notice}</div>}
-    {settingsOpen && <div className="modal-overlay" onClick={() => setSettingsOpen(false)}><section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={e => e.stopPropagation()}><div><h2 id="settings-title">Studio settings</h2><button className="icon-button" onClick={() => setSettingsOpen(false)} aria-label="Close settings"><X size={20}/></button></div><p>This studio uses your local browser, storage, and Kokoro speech service. Configure providers in the project’s <code>.env</code> file.</p><dl><dt>Video worker</dt><dd className={health?.worker ? 'qa-pass' : 'qa-warn'}>{health?.worker ? 'Running' : 'Offline'}</dd><dt>Kokoro narration</dt><dd className={health?.tts ? 'qa-pass' : 'qa-warn'}>{health?.ttsState || 'Checking'}</dd><dt>Research</dt><dd className={health?.modelReady === false ? 'qa-warn' : ''}>{health?.model || 'Checking'}{health?.modelReady === false ? ' · Unavailable' : ''}</dd><dt>Renderer</dt><dd>{health?.renderer || 'Checking'}</dd></dl><div className="setup-commands"><strong>Start the studio and worker</strong><code>npm run dev</code><strong>Start Kokoro in its own terminal</strong><code>cd ../kokoro-local-tts<br/>./run.sh</code><strong>Check dependencies</strong><code>npm run doctor</code></div><p className="muted">AI research can use your local Codex ChatGPT login or an API provider. Source excerpt mode is also available. No automatic publishing is included.</p></section></div>}
+    {settingsOpen && <div className="modal-overlay" onClick={() => setSettingsOpen(false)}><section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={e => e.stopPropagation()}><div><h2 id="settings-title">Studio settings</h2><button className="icon-button" onClick={() => setSettingsOpen(false)} aria-label="Close settings"><X size={20}/></button></div><p>Choose defaults for new videos. Override them below the URL form or when regenerating a project. Each video keeps its own model settings.</p><dl><dt>Video worker</dt><dd className={health?.worker ? 'qa-pass' : 'qa-warn'}>{health?.worker ? 'Running' : 'Offline'}</dd><dt>Kokoro narration</dt><dd className={health?.tts ? 'qa-pass' : 'qa-warn'}>{health?.ttsState || 'Checking'}</dd><dt>Research</dt><dd className={health?.modelReady === false ? 'qa-warn' : ''}>{health?.model || 'Checking'}{health?.modelReady === false ? ' · Unavailable' : ''}</dd><dt>Renderer</dt><dd>{health?.renderer || 'Checking'}</dd></dl>{modelSettings ? <div className="settings-model"><h3>Default model & direction</h3><p className="model-help">{modelSettings.provider === 'codex' ? 'Codex · saved ChatGPT login' : modelSettings.provider === 'api' ? 'Configured API provider' : 'Source excerpt mode'}</p><ModelControls value={defaultsDraft || modelSettings.defaults} onChange={setDefaultsDraft} models={modelSettings.models} provider={modelSettings.provider} disabled={settingsBusy}/><p className="model-help">{modelSettings.catalogNote}</p><div className="model-actions"><button className="secondary" disabled={settingsBusy} onClick={() => saveDefaults(true)}>Restore environment defaults</button><button className="primary" disabled={settingsBusy || !defaultsDraft || modelSettings.provider === 'extractive'} onClick={() => saveDefaults()}>{settingsBusy ? <LoaderCircle size={14} className="spin"/> : <Check size={14}/>} Save defaults</button></div>{settingsError && <p className="settings-error" role="alert">{settingsError}</p>}</div> : <p className="model-help">Model settings are loading.</p>}<div className="setup-commands"><strong>Start the studio and worker</strong><code>npm run dev</code><strong>Start Kokoro in its own terminal</strong><code>cd ../kokoro-local-tts<br/>./run.sh</code><strong>Check dependencies</strong><code>npm run doctor</code></div><p className="muted">AI research can use your local Codex ChatGPT login or an API provider. Source excerpt mode is also available. No automatic publishing is included.</p></section></div>}
   </div>;
 }
