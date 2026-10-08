@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, stat, rm } from 'node:fs/promises';
 import type { Job, Script, Inventory, Research, ScriptReview, Transcript, NarrationReview } from './types';
 import { event, invalidate, jobDir, readArtifact, saveJob, writeArtifact } from './store';
 import { relevance } from '../pipeline/visual-utils';
@@ -25,6 +25,7 @@ export async function persistScript(job:Job,script:Script,source:ScriptReview['s
   const history=await readArtifact<{latest:number}>(job.id,'script-history.json').catch(()=>({latest:0}));
   const version=Math.max(history.latest,old?.review?.version||0)+1;
   if(old?.review)await writeArtifact(job.id,`script-versions/${old.review.version}.json`,old);
+  if(script.quality){script.quality.scriptVersion=version;await writeArtifact(job.id,'script-quality.json',script.quality);}else await rm(path.join(jobDir(job.id),'script-quality.json'),{force:true});
   script.text=scriptText(script);script.review={version,source,state:source,createdAt:new Date().toISOString(),hash:digest(script.text)};
   await writeArtifact(job.id,`script-versions/${version}.json`,script);await writeArtifact(job.id,'script-history.json',{latest:version});await writeArtifact(job.id,'script.json',script);
   job.scriptApproval=undefined;return script;
@@ -68,7 +69,7 @@ export function humanScript(text:string,source:ScriptReview['source'],previous:S
     const claims=research.claims.filter(c=>c.sourceId===scene.sourceId && chosen.s.text.replace(/\s+/g,' ').includes(c.quote.replace(/\s+/g,' ')) && relevance(chunk,c.text+' '+c.quote)>0).slice(0,3).map(c=>c.id);
     return {id:`segment-${index+1}`,visitId:`human-visit-${index+1}`,sceneId:scene.id,sectionId:chosen.s.id,claimIds:claims,text:chunk};
   });
-  return {...previous,text,segments,outline:undefined,mode:'extractive',review:undefined};
+  return {...previous,text,quality:undefined,segments,outline:undefined,mode:'extractive',review:undefined};
 }
 export async function saveScript(job:Job,text:string,source:'edited'|'user_provided',version?:number) {
   if(job.status!=='SCRIPT_REVIEW')throw new Error('Go back to script review before editing');

@@ -17,6 +17,7 @@
     "test:director": "tsx --env-file-if-exists=.env scripts/director-smoke.ts",
     "test:renderer": "tsx scripts/renderer-smoke.ts",
     "test:settings-ui": "tsx scripts/settings-ui-smoke.ts",
+    "test:vo": "tsx --env-file-if-exists=.env scripts/vo-smoke.ts",
     "doctor": "tsx --env-file-if-exists=.env scripts/doctor.ts",
     "setup:browser": "playwright install chromium",
     "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts"

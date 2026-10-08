@@ -58,7 +58,7 @@ export type SourceType = 'website' | 'githubRepo' | 'documentation';
 export type CameraMode = 'walkthrough' | 'media' | 'detail';
 export interface Inventory { sourceUrl?: string; sourceType?: SourceType; contentMode?: ContentMode; pages?: DocumentPage[]; mapRevision?: number; assets?: VisualAsset[]; directorRevision?: number; scenes: Scene[]; notes: string[]; captureMode?: 'mobile' | 'desktop'; captureViewport?: { width: number; height: number }; captureRevision?: number; }
 export interface ScriptSegment { sectionId?: string; visitId?: string; id: string; text: string; sceneId: string; claimIds: string[]; }
-export interface Script { text?:string; review?:ScriptReview; contentMode?: ContentMode; outline?: StoryOutline; revision?: number; title: string; segments: ScriptSegment[]; mode: 'model' | 'extractive'; }
+export interface Script { quality?:import('../pipeline/script-quality').ScriptQualityReport; text?:string; review?:ScriptReview; contentMode?: ContentMode; outline?: StoryOutline; revision?: number; title: string; segments: ScriptSegment[]; mode: 'model' | 'extractive'; }
 export interface TimedSegment extends ScriptSegment { start: number; end: number; }
 export interface Transcript { duration: number; segments: TimedSegment[]; words: { text: string; start: number; end: number }[]; timingSource: string; }
 export interface VisualSupport {

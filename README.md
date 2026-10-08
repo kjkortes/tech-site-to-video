@@ -48,6 +48,12 @@ For promotional GitHub sources, both exploration and recording normalize the liv
 
 ## Model and creative-direction controls
 
+Default promotional VO writing now uses the retained research, ordered page sections, screenshot/demo descriptions and up to four actual media previews. It produces two internal story candidates, independently checks grounding and seven writing dimensions (hook, clarity, progression, visual support, differentiation, speech and density), and attempts up to two focused revisions when concrete weaknesses are found, stopping early when they are resolved. Grounding and source ownership take priority over a numeric score. Candidates can omit redundant optional sections while retaining the source-page introduction, selected differentiator and important caveat; the accepted outline follows the chosen script.
+
+The target is 80–115 spoken words without padding. Short grouped feature statements establish capability; the narration then explains user consequences and builds toward an unusual differentiator and concise takeaway. Research/navigation/critique remain restrained; script writing uses the project's selected creative direction, model and reasoning effort. Model writing adds draft/review calls and may take longer than the former single draft. The existing timeout/retry handling remains in place.
+
+The script-review screen includes a collapsible writing check, also saved as `script-quality.json` with candidate metrics, evidence-preview IDs, model settings and script version. Remaining editorial issues after the bounded revision are advisory for the human reviewer. Unsupported candidates cannot pass the grounding review. Saving manual edits removes obsolete automatic quality scores; it never rewrites the user's text. Regeneration feedback uses the previous saved script and retained research/visual inventory. Source-excerpt mode remains literal and explicitly marks creative review unavailable. These writing changes apply to new/regenerated scripts, preserving existing approval gates and approved narration.
+
 Open **Studio settings → Default model & direction** to choose a GPT model, reasoning effort, and creative direction, then **Save defaults**. New videos inherit these settings. Expand **Video model** below the URL form to override them for a submission. In an existing project's Overview, expand the model settings and then use **Regenerate** (or **Resume** for a failed job) to apply new choices to the stages you rerun. Changing defaults does not change existing jobs.
 
 The initial Codex defaults are **Codex default model**, **Medium reasoning effort**, and **Balanced creative direction**, unless overridden by `CODEX_MODEL`, `CODEX_REASONING_EFFORT`, or `LLM_CREATIVITY`. The dropdown reads visible, image-capable models and supported reasoning levels from the local Codex model catalog; it does not hard-code an aging list of model names. Open Codex to refresh its catalog, then reload the studio. A custom model ID remains available when the catalog is missing or a new model has not appeared yet; account availability is confirmed by Codex when used.
@@ -174,6 +180,7 @@ npm run build
 npm run doctor
 npm run test:e2e
 npm run test:director                         # real visually rich GitHub + model/TTS
+npm run test:vo                               # real PhotoCraft + LocalSend scripts; stops before TTS/video
 npm run test:renderer -- <director-job-id>     # short alternate-backend render
 ```
 

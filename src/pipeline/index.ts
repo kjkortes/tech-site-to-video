@@ -117,8 +117,13 @@ export async function runPipeline(id: string) {
         await invalidate(job,'SCRIPTING');
       }
       const script = await stage<Script>('SCRIPTING', 'script.json', async () => {
-        const outline=await buildOutline(facts,inventory);await writeArtifact(id,'story-outline.json',outline);
-        return persistScript(job,await writeScript(facts,inventory,outline,job.scriptFeedback),'generated');
+        const history=await readArtifact<{latest:number}>(id,'script-history.json').catch(()=>null);
+        const previous=history?await readArtifact<Script>(id,`script-versions/${history.latest}.json`).catch(()=>undefined):undefined;
+        const outline=await buildOutline(facts,inventory,job.scriptFeedback);
+        const draft=await writeScript(facts,inventory,outline,job.scriptFeedback,{jobId:id,previous});
+        await writeArtifact(id,'research.json',facts);
+        await writeArtifact(id,'story-outline.json',draft.outline||outline);
+        return persistScript(job,draft,'generated');
       });
       if(!scriptApproved(job,script))return enterScriptReview(job,script);
       if(!job.narration || job.narration.state==='stale') {job.status='NARRATION_PENDING';event(job,'Choose generated TTS or upload narration. Video generation is waiting.');await saveJob(job);return job;}

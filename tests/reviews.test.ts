@@ -52,6 +52,19 @@ test('significant narration mismatch blocks approval; explicit proceed and trans
  job.status='AUDIO_REVIEW';job.narration!.state='ready';await saveJob(job);await adoptAudioTranscript(job);assert.equal(job.status,'SCRIPT_REVIEW');const adopted=await readArtifact<Script>(job.id,'script.json');assert.equal(adopted.text,job.narration!.mismatch!.transcript);assert.equal(adopted.review!.version,2);assert.equal(job.narration!.state,'stale');await approveScript(job,2);assert.equal(job.status,'AUDIO_REVIEW');await approveAudio(job,2,2);assert.equal(job.status,'RECEIVED');
 }));
 
+test('writing review is versioned and survives approval, but human edits remove obsolete scores',()=>isolated(async()=>{
+ const {job,script}=await seed();
+ script.quality={revision:1,status:'checked',selectedCandidate:'chosen',wordCount:30,revised:false,issues:[],notes:[],candidates:[],inspectedAssetIds:['source-image']};
+ const generated=await persistScript(job,script,'generated');job.status='SCRIPT_REVIEW';await saveJob(job);
+ assert.equal((await readArtifact<{scriptVersion:number}>(job.id,'script-quality.json')).scriptVersion,generated.review!.version);
+ await approveScript(job,generated.review!.version);assert.equal((await readArtifact<Script>(job.id,'script.json')).quality!.selectedCandidate,'chosen');
+ await backToScript(job);await saveScript(job,'My own exact words.','edited',generated.review!.version);
+ assert.equal((await readArtifact<Script>(job.id,'script.json')).quality,undefined);
+ assert.equal(await stat(path.join(jobDir(job.id),'script-quality.json')).then(()=>true).catch(()=>false),false);
+ assert.equal((await readArtifact<Script>(job.id,`script-versions/${generated.review!.version}.json`)).quality!.selectedCandidate,'chosen');
+ assert.equal(job.status,'SCRIPT_REVIEW');assert.equal(job.scriptApproval,undefined);
+}));
+
 test('alignment uses actual speech timestamps, tolerates punctuation and rejects invented/invalid timing',()=>{
  const script={...base,text:'Layers preserve pixels. Masks protect regions.',segments:[{...base.segments[0],text:'Layers preserve pixels.'},{...base.segments[1],text:'Masks protect regions.'}]};const words=['layers','preserve','pixels','masks','protect','regions'].map((text,i)=>({text,start:1+i*.6,end:1.4+i*.6}));const aligned=alignNarration(script,{duration:7,words,segments:[]},7);assert.equal(aligned.mismatch.significant,false);assert.equal(aligned.transcript.duration,7);assert.equal(aligned.transcript.segments[0].start,1);assert.equal(aligned.transcript.segments[1].start,2.8);assert.deepEqual(aligned.transcript.words,words);assert.throws(()=>alignNarration(script,{duration:7,words:[],segments:[]},7),/no real/);assert.throws(()=>alignNarration(script,{duration:7,words:[{text:'Layers',start:0,end:99}],segments:[]},7),/invalid/);
 });

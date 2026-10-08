@@ -26,7 +26,7 @@ export function creativeInstruction(task: ModelTask = 'script') {
     balanced: 'Use an engaging product-first hook, natural connective phrasing, factual curiosity with a quick payoff, and an escalating concise story within the supplied walkthrough.',
     bold: 'Use inventive source-grounded hook wording and vivid, economical explanations and a connected story arc within the supplied walkthrough. Keep the product-first opening and fixed visit order.',
   };
-  return `Script creativity: ${directions[currentModelSettings().creativity]} Creativity changes wording only; every factual claim requires evidence. Never change the outline, navigation or section ownership.`;
+  return `Script creativity: ${directions[currentModelSettings().creativity]} Creativity changes wording only; every factual claim requires evidence. Keep source order, navigation and section ownership. The script task may select a stronger subset of optional visits, group related evidence in the same visit and vary spoken rhythm; it may not move claims between sections.`;
 }
 
 export function modelProvider(): 'api' | 'codex' | 'extractive' {

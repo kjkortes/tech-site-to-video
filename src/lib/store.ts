@@ -48,7 +48,7 @@ export function event(job: Job, message: string) {
   job.events = [...job.events, { at: new Date().toISOString(), stage: job.status, message }].slice(-150);
 }
 export const artifactNames: Record<Stage, string[]> = {
-  RESEARCHING: ['research.json'], EXPLORING: ['inventory.json', 'page-map.json', 'exploration', 'assets'], SCRIPTING: ['script.json','story-outline.json'],
+  RESEARCHING: ['research.json'], EXPLORING: ['inventory.json', 'page-map.json', 'exploration', 'assets'], SCRIPTING: ['script.json','story-outline.json','script-quality.json'],
   TTS: ['transcript.json', 'narration.wav', 'tts-progress.json', 'speech','audio-input.wav','audio-input.mp3','audio-input.m4a','audio-transcription.json'], DIRECTING: ['shot-plan.json', 'director-report.json', 'diversity.json','walkthrough-report.json','walkthrough-state.json','coverage-report.json','retention-report.json','safe-area.json','camera-report.json'],
   RECORDING: ['recordings.json', 'clips'], EDITING: ['final.mp4', 'poster.jpg', 'captions.srt', 'captions.ass', 'composition', 'render'], QA: ['qa.json'],
 };
