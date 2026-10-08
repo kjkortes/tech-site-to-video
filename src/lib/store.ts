@@ -49,12 +49,14 @@ export function event(job: Job, message: string) {
 }
 export const artifactNames: Record<Stage, string[]> = {
   RESEARCHING: ['research.json'], EXPLORING: ['inventory.json', 'page-map.json', 'exploration', 'assets'], SCRIPTING: ['script.json','story-outline.json'],
-  TTS: ['transcript.json', 'narration.wav', 'tts-progress.json', 'speech'], DIRECTING: ['shot-plan.json', 'director-report.json', 'diversity.json','walkthrough-report.json','walkthrough-state.json','coverage-report.json','retention-report.json','safe-area.json'],
+  TTS: ['transcript.json', 'narration.wav', 'tts-progress.json', 'speech','audio-input.wav','audio-input.mp3','audio-input.m4a','audio-transcription.json'], DIRECTING: ['shot-plan.json', 'director-report.json', 'diversity.json','walkthrough-report.json','walkthrough-state.json','coverage-report.json','retention-report.json','safe-area.json','camera-report.json'],
   RECORDING: ['recordings.json', 'clips'], EDITING: ['final.mp4', 'poster.jpg', 'captions.srt', 'captions.ass', 'composition', 'render'], QA: ['qa.json'],
 };
 export async function invalidate(job: Job, from: Stage) {
   const downstream = stages.slice(stages.indexOf(from));
   for (const stage of downstream) for (const name of artifactNames[stage]) await rm(path.join(jobDir(job.id), name), { recursive: true, force: true });
+  if(stages.indexOf(from)<=stages.indexOf('SCRIPTING'))job.scriptApproval=undefined;
+  if(stages.indexOf(from)<=stages.indexOf('TTS') && job.narration){job.narration.state='stale';job.narration.approvedAt=undefined;}
   job.completed = job.completed.filter(s => !downstream.includes(s));
   job.revision++; job.status = 'RECEIVED'; job.error = undefined; job.failedStage = undefined;
   job.duration = undefined; job.qaScore = undefined; job.progress = job.completed.length / stages.length;

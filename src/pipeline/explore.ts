@@ -2,18 +2,18 @@ import path from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { launchBrowser, newContext, navigate, inspectPage, dismissConsent, perform, captureMode, captureRevision, viewport, positionAtSection } from './browser';
 import { jobDir } from '../lib/store';
-import { Research, Scene, Inventory, VisualAsset } from '../lib/types';
+import { Research, Scene, Inventory, VisualAsset, ContentMode } from '../lib/types';
 
 import { collectVisuals } from './visual-inventory';
 import { directorRevision } from './direct';
 import { mapDocument, mapRevision, locationFor } from './document-map';
 import type { DocumentPage } from '../lib/types';
 
-export async function explore(id: string, research: Research): Promise<Inventory> {
+export async function explore(id: string, research: Research, contentMode:ContentMode='promotional'): Promise<Inventory> {
   const dir = jobDir(id); await mkdir(path.join(dir, 'exploration'), { recursive: true });
   const browser = await launchBrowser(); const scenes: Scene[] = []; const notes: string[] = []; const assets: VisualAsset[] = []; const pages: DocumentPage[] = [];
   try {
-    const context = await newContext(browser); const page = await context.newPage();
+    const context = await newContext(browser,undefined,contentMode); const page = await context.newPage();
     for (const source of research.sources.filter(s=>!new URL(s.url).pathname.includes('/commit/'))) {
       try {
         await navigate(page, source.url); await dismissConsent(page);
@@ -39,7 +39,7 @@ export async function explore(id: string, research: Research): Promise<Inventory
     }
     // Probe a small number of actual demo targets during exploration; their replay is independent.
     for (const asset of assets.filter(a=>a.type === 'demo').slice(0,2)) {
-      const demoContext = await newContext(browser);
+      const demoContext = await newContext(browser,undefined,contentMode);
       try {
         const demo = await demoContext.newPage(); await navigate(demo, asset.pageUrl); await dismissConsent(demo);
         for (const action of asset.actions || []) await perform(demo, action);
@@ -63,7 +63,7 @@ export async function refreshInventoryCapture(id: string, inventory: Inventory):
   // Rebind only matched scenes; keep unmatched legacy fallbacks without map ownership.
   const scenes=inventory.scenes.map(s=>({...s,sectionId:undefined as string|undefined}));
   try {
-    const context = await newContext(browser); const page = await context.newPage();
+    const context = await newContext(browser,undefined,inventory.contentMode); const page = await context.newPage();
     const sources=[...new Map(inventory.scenes.filter(s=>!new URL(s.url).pathname.includes('/commit/')).map(s=>[s.url,s])).values()];
     for(const source of sources) {
       await navigate(page,source.url);await dismissConsent(page);

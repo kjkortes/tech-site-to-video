@@ -1,3 +1,4 @@
+import {approvedTestPipeline} from './approval-test-driver';
 // Reuse verified source research in an isolated job; refresh captures and create a new story/voice/plan.
 import path from 'node:path';
 import { cp } from 'node:fs/promises';
@@ -14,7 +15,7 @@ for(const name of ['research.json','inventory.json','assets','exploration'])awai
 job.completed=['RESEARCHING','EXPLORING'];await saveJob(job);
 console.log(`Presentation job: ${job.id}`);
 const timer=setInterval(async()=>{const {getJob}=await import('../src/lib/store');const state=await getJob(job.id);console.log(`${state?.status}: ${state?.detail}`);},10000);
-try{await runPipeline(job.id);}finally{clearInterval(timer);}
+try{await approvedTestPipeline(job.id);}finally{clearInterval(timer);}
 const {getJob}=await import('../src/lib/store');const done=await getJob(job.id);assert.equal(done?.status,'READY_FOR_REVIEW',done?.error);
 const inventory=await readArtifact<Inventory>(job.id,'inventory.json'),research=await readArtifact<Research>(job.id,'research.json');
 const coverage=await readArtifact<CoverageReport>(job.id,'coverage-report.json'),qa=await readArtifact<QAReport>(job.id,'qa.json'),shots=await readArtifact<Shot[]>(job.id,'shot-plan.json'),transcript=await readArtifact<Transcript>(job.id,'transcript.json');

@@ -38,7 +38,7 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
             let generated=false,codeFallback:string|undefined;
             if(shot.type==='code_focus' && source && !await stat(source).then(s=>s.size>0).catch(()=>false)){source=undefined;codeFallback='Stored source-code image is unavailable';}
             if(shot.type==='code_focus' && (!source || !await stat(source).then(s=>s.size>0).catch(()=>false)) && asset.selector) {
-              const context=await newContext(browser);
+              const context=await newContext(browser,undefined,inventory.contentMode);
               try {
                 const page=await context.newPage();await navigate(page,asset.pageUrl);await dismissConsent(page);
                 if(await consentObscuresPage(page))throw new Error('Consent dialog obscures source code');
@@ -69,7 +69,7 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
               }
               finally { await context.close(); }
             } else if (asset.type === 'section') {
-              const context = await newContext(browser);
+              const context = await newContext(browser,undefined,inventory.contentMode);
               try { const page = await context.newPage(); await navigate(page, asset.pageUrl); await dismissConsent(page); if(!codeVisualsAllowed(inventory.contentMode))await page.addStyleTag({content:promotionalCaptureCSS}); if (await consentObscuresPage(page)) throw new Error('Consent dialog obscures the source'); for (const action of asset.actions || []) await perform(page, action); source = path.join(clips, `${shot.id}-source.png`); if (asset.selector) await page.locator(asset.selector).screenshot({ path: source, animations: 'disabled', timeout: 7000 }); else await page.screenshot({ path: source, animations: 'disabled' }); }
               finally { await context.close(); }
             }
@@ -84,7 +84,7 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
       if (!assetShot) {
         for (let attempt = 1; attempt <= 2; attempt++) {
           await onProgress(`Recording shot ${Number(shot.id)} of ${shots.length}${attempt > 1 ? ' · retrying' : ''}`);
-          const context = await newContext(browser, clips); const page = await context.newPage(); const video = page.video();
+          const context = await newContext(browser, clips,inventory.contentMode); const page = await context.newPage(); const video = page.video();
           try {
             const opened = Date.now();
             await navigate(page, shot.url); await dismissConsent(page);

@@ -2,6 +2,7 @@ import { Worker } from 'bullmq';
 import { config } from './lib/config';
 import { listJobs } from './lib/store';
 import { redisConnection, enqueue } from './lib/queue';
+import { runnable } from './lib/workflow';
 import { runPipeline } from './pipeline';
 import { sleep } from './lib/process';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -22,13 +23,13 @@ try {
     worker.on('error', console.error);
     // Recover jobs saved just before an API crash prevented queue insertion.
     while (!stopping) {
-      for (const job of await listJobs()) if (!['READY_FOR_REVIEW', 'APPROVED', 'SKIPPED', 'FAILED'].includes(job.status)) await enqueue(job.id, job.revision);
+      for (const job of await listJobs()) if (runnable(job)) await enqueue(job.id, job.revision);
       await sleep(5000);
     }
     await worker.close();
   } else {
     while (!stopping) {
-      const jobs = (await listJobs()).reverse().filter(job => !['READY_FOR_REVIEW', 'APPROVED', 'SKIPPED', 'FAILED'].includes(job.status));
+      const jobs = (await listJobs()).reverse().filter(job => runnable(job));
       for (const job of jobs) { if (stopping) break; console.log(`Processing ${job.id}: ${job.url}`); await runPipeline(job.id); }
       await sleep(2000);
     }

@@ -1,3 +1,4 @@
+import {approvedTestPipeline} from './approval-test-driver';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { config } from '../src/lib/config';
@@ -12,7 +13,7 @@ if (process.env.DIRECTOR_REPLAN === 'true') await invalidate(job, 'DIRECTING');
 if (job.status === 'FAILED') { job.status = 'RECEIVED'; job.error = undefined; await saveJob(job); }
 console.log(`Director integration job: ${job.id}`);
 const timer = setInterval(async()=>{const j=await getJob(job.id);console.log(`${j?.status}: ${j?.detail}`);},10000);
-try { await runPipeline(job.id); } finally { clearInterval(timer); }
+try { await approvedTestPipeline(job.id,{regenerate:process.env.SMOKE_REGENERATE==='true'}); } finally { clearInterval(timer); }
 const done=await getJob(job.id); assert.equal(done?.status,'READY_FOR_REVIEW',done?.error);
 const inventory=await readArtifact<Inventory>(job.id,'inventory.json');
 const shots=await readArtifact<Shot[]>(job.id,'shot-plan.json');

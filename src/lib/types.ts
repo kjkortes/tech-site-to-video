@@ -3,15 +3,18 @@ import { modelOptionsSchema, ModelSettings } from './model-options';
 
 export const stages = ['RESEARCHING', 'EXPLORING', 'SCRIPTING', 'TTS', 'DIRECTING', 'RECORDING', 'EDITING', 'QA'] as const;
 export type Stage = typeof stages[number];
-export type Status = 'RECEIVED' | Stage | 'READY_FOR_REVIEW' | 'APPROVED' | 'SKIPPED' | 'FAILED';
+export const reviewStates = ['SCRIPT_REVIEW','NARRATION_PENDING','AUDIO_REVIEW'] as const;
+export type Status = 'RECEIVED' | typeof reviewStates[number] | Stage | 'READY_FOR_REVIEW' | 'APPROVED' | 'SKIPPED' | 'FAILED';
 export const stageLabels: Record<Stage, string> = {
   RESEARCHING: 'Researching the product', EXPLORING: 'Finding useful visuals', SCRIPTING: 'Writing the story',
-  TTS: 'Generating narration', DIRECTING: 'Planning the shots', RECORDING: 'Capturing directed shots',
+  TTS: 'Preparing narration', DIRECTING: 'Planning the shots', RECORDING: 'Capturing directed shots',
   EDITING: 'Assembling the video', QA: 'Checking picture and sound',
 };
 export const createJobSchema = z.object({ url: z.string().trim().url().max(2048), llm: modelOptionsSchema.partial().optional(), contentMode: z.enum(['promotional','tutorial','developer']).default('promotional') });
-export const actionSchema = z.object({ action: z.enum(['approve', 'skip', 'resume', 'regenerate']), scope: z.enum(['full', 'script', 'voice', 'visuals']).default('full'), llm: modelOptionsSchema.partial().optional() });
-export interface Job { contentMode?: ContentMode;
+export const actionSchema = z.object({ action: z.enum(['approve', 'skip', 'resume', 'regenerate','approve-script','save-script','regenerate-script','generate-tts','approve-audio','back-script','use-audio-transcript','replace-audio']), scope: z.enum(['full', 'script', 'voice', 'visuals']).default('full'), llm: modelOptionsSchema.partial().optional(), text:z.string().min(1).max(20000).optional(), source:z.enum(['edited','user_provided']).optional(), feedback:z.string().max(2000).optional(), scriptVersion:z.number().int().positive().optional(), audioVersion:z.number().int().positive().optional(), mismatchResolution:z.literal('proceed').optional() });
+export interface ScriptReview { version:number; source:'generated'|'edited'|'user_provided'; state:'generated'|'edited'|'user_provided'|'approved'; createdAt:string; approvedAt?:string; hash:string; }
+export interface NarrationReview { version:number; source:'generated'|'uploaded'; state:'pending'|'ready'|'approved'|'stale'; scriptVersion:number; scriptHash:string; inputFile?:string; originalName?:string; format?:string; sampleRate?:number; duration?:number; hash?:string; transcriptHash?:string; createdAt:string; approvedAt?:string; alignment?:string; mismatch?:{significant:boolean; difference:number; transcript:string; message:string}; mismatchResolution?:'proceed'|'transcript'; }
+export interface Job { scriptApproval?:{version:number;hash:string;approvedAt:string}; narration?:NarrationReview; scriptFeedback?:string; contentMode?: ContentMode;
   llm?: ModelSettings;
   id: string; url: string; title: string; status: Status; createdAt: string; updatedAt: string;
   revision: number; completed: Stage[]; error?: string; failedStage?: Stage;
@@ -55,7 +58,7 @@ export type SourceType = 'website' | 'githubRepo' | 'documentation';
 export type CameraMode = 'walkthrough' | 'media' | 'detail';
 export interface Inventory { sourceUrl?: string; sourceType?: SourceType; contentMode?: ContentMode; pages?: DocumentPage[]; mapRevision?: number; assets?: VisualAsset[]; directorRevision?: number; scenes: Scene[]; notes: string[]; captureMode?: 'mobile' | 'desktop'; captureViewport?: { width: number; height: number }; captureRevision?: number; }
 export interface ScriptSegment { sectionId?: string; visitId?: string; id: string; text: string; sceneId: string; claimIds: string[]; }
-export interface Script { contentMode?: ContentMode; outline?: StoryOutline; revision?: number; title: string; segments: ScriptSegment[]; mode: 'model' | 'extractive'; }
+export interface Script { text?:string; review?:ScriptReview; contentMode?: ContentMode; outline?: StoryOutline; revision?: number; title: string; segments: ScriptSegment[]; mode: 'model' | 'extractive'; }
 export interface TimedSegment extends ScriptSegment { start: number; end: number; }
 export interface Transcript { duration: number; segments: TimedSegment[]; words: { text: string; start: number; end: number }[]; timingSource: string; }
 export interface VisualSupport {

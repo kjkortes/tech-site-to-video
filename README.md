@@ -1,10 +1,10 @@
 # Frameforge · automated tech demo videos
 
-A runnable local MVP of the supplied **Automated Tech Demo Video Generator** brief. Paste a public website or GitHub repository URL, let the worker produce a narrated vertical MP4, then approve, regenerate, or skip it in the studio.
+A runnable local MVP of the supplied **Automated Tech Demo Video Generator** brief. Paste a public website or GitHub repository URL, review the generated or custom VO script, approve generated or uploaded narration, then let the worker produce a vertical MP4 for final review.
 
 ## Run
 
-Requires **Node.js 22.12+**, FFmpeg/FFprobe with libass and libx264, Chromium, and the existing `kokoro-local-tts` service. Ubuntu's standard FFmpeg package supports the default renderer.
+Requires **Node.js 22.12+**, FFmpeg/FFprobe with libass and libx264, Chromium, and the existing `kokoro-local-tts` service for generated voices. Uploaded voices can be used without running Kokoro; their alignment requires Python with `faster-whisper`. Ubuntu's standard FFmpeg package supports the default renderer.
 
 ```bash
 npm install
@@ -28,6 +28,24 @@ npm run dev
 
 Open **http://127.0.0.1:3000**. `npm run dev:web` starts only the interface; `npm run worker` starts only the worker. Production: `npm run build`, then `npm start`. The studio detects missing worker/narration services and explains how to start them. If using an existing Chrome installation, set `CHROMIUM_EXECUTABLE_PATH` in `.env` instead of downloading Playwright's Chromium.
 
+## Script and narration approval
+
+**Start project** researches and explores the URL, generates a VO script, then stops at **SCRIPT_REVIEW**. Edit the text and **Save edits**, choose **Use my own script** and save it, or regenerate using the same research with optional direction. Regeneration feedback is interpreted by the configured model; source-excerpt mode remains deterministic. **Approve script** accepts the exact saved version and opens narration options; it does not start TTS or video generation.
+
+Choose **Generate TTS** to use the existing configured Kokoro voice/settings, or **Upload & align narration** for WAV, MP3 or M4A (100 MB maximum, 30 minutes maximum). Both paths stop at **AUDIO_REVIEW**, with a player, real duration, narration source and approved script. Only **Approve & generate video** unlocks final directing, recording, composition, rendering and QA.
+
+Uploads are stored locally, probed with FFprobe, and decoded to a canonical 48 kHz WAV. Local Whisper produces actual spoken words and timestamps; token alignment maps those words to the approved script's section/scene associations. It never invents a reading clock. The canonical audio duration, aligned clauses and actual word timestamps drive the complete video timeline and captions. Recognition wording is used for uploaded-audio captions; your exact approved script remains saved independently.
+
+`NARRATION_PYTHON` selects a Python environment containing `faster-whisper`. If unset, the existing neighboring `../kokoro-local-tts/.venv/bin/python` is used when present, otherwise `python3`. `NARRATION_WHISPER_MODEL` defaults to `small` and also accepts a local model directory. The first invocation can download model weights; speech is processed locally. A missing model/dependency or unintelligible recording pauses the job with an actionable error; the original upload is retained for **Resume**. There is no estimated-timing fallback.
+
+More than 25% normalized token edit difference triggers an explicit mismatch warning. Minor punctuation, case and small pronunciation/recognition differences are tolerated. Choose **Use audio transcript** (creates a new script version requiring script approval followed by audio approval), **Keep script and replace audio**, or explicitly **Proceed anyway & generate video**. Recognizer errors and differently paced speech can still shift clause boundaries; listen and review the transcript when warned.
+
+Script history is stored in `script-versions/` with version, source (`generated`, `edited`, `user_provided`), creation/approval timestamps and content hash. Audio metadata and archived waveforms/original uploads live in `audio-versions/`. Job state and approval records use the existing atomic JSON/PostgreSQL store. Review states are excluded from both worker polling and Redis reconciliation; duplicate tasks cannot bypass the gates. Approval binds the script version/text, audio version/waveform and transcript hash. Reloading the studio restores the selected project and its saved review stage.
+
+**Back to script** retains research, inventory and exploration, revokes approvals and marks narration stale. Saving changed text invalidates narration, timings, shots, recordings and render; previous versions remain archived. Reapproving an unchanged script can restore the same waveform to audio review, but never approves it automatically. **Regenerate → Visuals & edit** preserves approved script/audio. Human wording also survives capture/map upgrades; factual wording of human-authored scripts receives an advisory QA notice rather than being silently rewritten.
+
+For promotional GitHub sources, both exploration and recording normalize the live repository layout before capture. Current `SplitPageLayout`/`PageLayout` components, legacy `Layout-main`/`Layout-sidebar` and semantic sibling geometry identify the right About/Releases/Packages/Languages pane. Its wrapper is hidden; grid/flex and main-column width limits are released so the README reflows normally. GitHub/README identity, font sizing, source proportions and the existing contextual camera remain intact. Detected sidebars that fail to free sufficient width produce a capture error instead of compensating with zoom. Other websites and developer/tutorial capture policies retain their original layout.
+
 ## Model and creative-direction controls
 
 Open **Studio settings → Default model & direction** to choose a GPT model, reasoning effort, and creative direction, then **Save defaults**. New videos inherit these settings. Expand **Video model** below the URL form to override them for a submission. In an existing project's Overview, expand the model settings and then use **Regenerate** (or **Resume** for a failed job) to apply new choices to the stages you rerun. Changing defaults does not change existing jobs.
@@ -43,7 +61,7 @@ Saved defaults live in `DATA_DIR/model-defaults.json`, separated by provider; jo
 ## What is implemented
 
 - Next.js review studio with persisted projects, worker progress, playable preview, source evidence, timestamped script, inspectable **Shots** tab, QA report, approval/download, skipping, and scoped regeneration.
-- Node/TypeScript pipeline: research → exploration → script → Kokoro → shot plan → clean recording → edit → QA → final review.
+- Node/TypeScript pipeline: research → exploration → script → **script review** → narration choice → **audio review** → shot plan → clean recording → edit → QA → final review.
 - Separate browser passes. Exploration saves screenshots and replay instructions; only the fresh recording pass becomes browser footage.
 - Typed visual inventory treats each README screenshot, GIF, video, section, code block and demo target as an independent candidate. Original raster/media downloads are bounded and every redirect is checked; inaccessible/unsupported media use an element capture. Badges and small icons are filtered out.
 - The guided walkthrough director first builds a DOM page map and ordered story outline, writes narration around section visits, then maps word timestamps to browser context and local cutaways. It optionally uses the configured Codex/API model with up to eight attached source image/code previews to refine focal regions without changing section visits or document order. Each persisted shot explains its purpose, asset, framing, motion, caption placement and selection rationale. Invalid model selections fall back to executable source-ranked shots.
@@ -95,7 +113,12 @@ inventory.json                 # scenes plus independent media/code/demo assets
 assets/asset-*                  # original/captured source media
 assets/director-asset-*.jpg     # previews attached to visual direction
 exploration/scene-*.png
-script.json
+script.json                    # exact canonical VO text and current review/version metadata
+script-history.json
+script-versions/               # immutable saved script versions / approval snapshots
+audio-versions/                # prior narration metadata, WAVs and original uploads
+audio-input.*                  # authoritative current uploaded original
+audio-transcription.json       # local ASR words and actual timestamps
 tts-progress.json              # external Kokoro job ID for restart recovery
 narration.wav
 transcript.json
@@ -199,3 +222,5 @@ Story selection favors immediate identity, visible proof, escalation, one unusua
 Camera QA rejects an asset/close-up intro, automatic page/media zoom, detail without an immediate establishing view or return, unmentioned detail, detail over 4.5 seconds, scale above 1.12×, less than half the source visible, or detail exceeding 35% of runtime. It reviews detail above 20% and page context below half the runtime without manufacturing zoom to meet a quota. `camera-report.json` saves duration-weighted mode ratios, scale and visible-source fractions.
 
 Verification helpers: `npx tsx --test tests/camera-policy.test.ts tests/fullbleed.test.ts` covers contextual camera rules, pixel isolation, safe focal framing, code rejection and exact-element extraction. `npx tsx scripts/contextual-preview.ts <completed-job-id> [--inspect-detail]` creates an isolated preview from existing research, narration timings and source assets; the original job is preserved. The optional inspection reuses a previously inspected focal region only when an associated feature is named by narration. `npx tsx scripts/renderer-smoke.ts <preview-job-id>` checks the alternate HyperFrames backend.
+
+`npx tsx scripts/approval-ui-smoke.ts` checks editable/reload-safe review screens, regeneration feedback, custom script, voice selection, upload, stale narration and mobile layout against isolated fixtures. `npm run test:e2e` explicitly approves both gates in its test-only harness. Set `SMOKE_REGENERATE=true` to exercise regeneration/editing; set `SMOKE_AUDIO_SOURCE=<completed smoke job ID>` to exercise a custom script plus real local transcription of uploaded voice. Production workers never use the test approval driver.

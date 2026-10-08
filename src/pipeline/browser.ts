@@ -1,11 +1,11 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { validatePublicUrl } from '../lib/network';
-import { BrowserAction, WalkLocation } from '../lib/types';
+import { BrowserAction, WalkLocation, ContentMode } from '../lib/types';
 import { config } from '../lib/config';
 import { videoLayout } from './video-layout';
 
 export const captureMode = 'desktop' as const;
-export const captureRevision = 6;
+export const captureRevision = 7;
 export const viewport = videoLayout.viewport;
 export function matchesCapture(value: { captureMode?: 'mobile' | 'desktop'; captureViewport?: { width: number; height: number }; captureRevision?: number }) {
   return value.captureRevision === captureRevision && value.captureMode === captureMode && value.captureViewport?.width === viewport.width && value.captureViewport?.height === viewport.height;
@@ -34,11 +34,12 @@ export async function guardContext(context: BrowserContext) {
   });
   context.on('page', page => { page.on('dialog', dialog => { void dialog.dismiss(); }); });
 }
-export async function newContext(browser: Browser, recordingDir?: string) {
+const capturePolicies=new WeakMap<BrowserContext,ContentMode>();
+export async function newContext(browser: Browser, recordingDir?: string, contentMode:ContentMode='promotional') {
   const context = await browser.newContext({
     viewport, isMobile: false, hasTouch: false, deviceScaleFactor: 2, reducedMotion: 'reduce', serviceWorkers: 'block', acceptDownloads: false,
     ...(recordingDir ? { recordVideo: { dir: recordingDir, size: recordingSize } } : {}) });
-  await guardContext(context); return context;
+  capturePolicies.set(context,contentMode);await guardContext(context); return context;
 }
 export async function navigate(page: Page, url: string) {
   await validatePublicUrl(url);
@@ -49,10 +50,60 @@ export async function navigate(page: Page, url: string) {
   if (/\b(404|403|access denied|just a moment|page not found|verify you are human)\b/i.test(title)) throw new Error(`Website cannot be demonstrated: ${title}`);
   await prepareGitHubCapture(page);
 }
-async function prepareGitHubCapture(page: Page) {
+export async function normalizeGitHubReadme(page:Page) {
+  if(new URL(page.url()).hostname!=='github.com')return null;
+  const result=await page.evaluate(()=>{
+    const article=document.querySelector('article.markdown-body') as HTMLElement|null;
+    if(!article)return null;
+    const before=article.getBoundingClientRect().width;
+    let main=article.closest('[data-component="SplitPageLayout.Content"],[data-component="PageLayout.Content"],.Layout-main') as HTMLElement|null;
+    let layout=main?.parentElement;
+    const metadata=/\b(?:About|Releases|Packages|Languages)\b/;
+    const sides=new Set<HTMLElement>();
+    for(const candidate of document.querySelectorAll('[data-position="end"],.Layout-sidebar,[data-component="SplitPageLayout.Pane"],[data-component="PageLayout.Pane"],aside')) {
+      if(candidate.contains(article) || !metadata.test((candidate as HTMLElement).innerText||candidate.textContent||''))continue;
+      const outer=candidate.closest('[data-position="end"],.Layout-sidebar')||candidate;
+      if(!outer.contains(article))sides.add(outer as HTMLElement);
+    }
+    // Semantic/sibling fallback handles class and component-name changes.
+    for(let branch:HTMLElement|null=article;branch?.parentElement && branch.parentElement!==document.body;branch=branch.parentElement) {
+      const parent=branch.parentElement;
+      const siblings=[...parent.children].filter(el=>el!==branch && !el.contains(article));
+      const sidebar=siblings.find(el=>{
+        const r=el.getBoundingClientRect(),b=branch!.getBoundingClientRect();
+        return metadata.test((el as HTMLElement).innerText||el.textContent||'') && r.width>100 && r.width<innerWidth*.55 && r.left>=b.right-10;
+      });
+      if(sidebar) {sides.add(sidebar as HTMLElement);layout=parent;main=branch;break;}
+    }
+    for(const side of sides){side.setAttribute('data-frameforge-github-sidebar','');side.style.setProperty('display','none','important');}
+    if(layout && main) {
+      layout.setAttribute('data-frameforge-github-layout','');
+      main.setAttribute('data-frameforge-github-content','');
+      for(const el of layout.children)if(el.getAttribute('data-component')?.includes('Divider') || /Divider/.test(el.className)) (el as HTMLElement).style.setProperty('display','none','important');
+      const display=getComputedStyle(layout).display;
+      if(display==='grid'){layout.style.setProperty('grid-template-columns','minmax(0,1fr)','important');layout.style.setProperty('grid-template-areas','none','important');}
+      layout.style.setProperty('gap','0','important');
+      for(let el:HTMLElement|null=article;el;el=el.parentElement) {
+        el.style.setProperty('max-width','none','important');el.style.setProperty('min-width','0','important');
+        if(el!==article) {el.style.setProperty('width','100%','important');el.style.setProperty('box-sizing','border-box','important');}
+        if(el===main)break;
+      }
+      main.style.setProperty('grid-column','1 / -1','important');main.style.setProperty('grid-area','auto','important');main.style.setProperty('flex','1 1 auto','important');
+      for(const child of main.querySelectorAll('[data-width]')) (child as HTMLElement).style.setProperty('max-width','none','important');
+    }
+    return {before,sidebars:sides.size};
+  });
+  if(!result)return null;
+  await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+  const measured=await page.locator('article.markdown-body').first().evaluate(el=>({width:el.getBoundingClientRect().width,viewport:innerWidth,transform:getComputedStyle(el).transform,fontSize:getComputedStyle(el).fontSize}));
+  if(result.sidebars && measured.width<measured.viewport*.8)throw new Error(`GitHub README reflow failed: ${Math.round(measured.width)}px of ${measured.viewport}px; refusing to compensate with zoom`);
+  return {...result,...measured};
+}
+export async function prepareGitHubCapture(page: Page) {
   if (new URL(page.url()).hostname !== 'github.com') return;
   const readme = page.locator('article.markdown-body').filter({ visible: true }).first();
   if (!await readme.count()) return;
+  if((capturePolicies.get(page.context())||'promotional')==='promotional')await normalizeGitHubReadme(page);
   await readme.evaluate(article => {
     let anchor: HTMLElement | null = null;
     try { anchor = document.getElementById(decodeURIComponent(location.hash.slice(1))); } catch { /* Invalid hashes use the overview. */ }

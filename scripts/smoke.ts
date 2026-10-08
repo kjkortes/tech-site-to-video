@@ -1,12 +1,13 @@
+import {approvedTestPipeline} from './approval-test-driver';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { stat } from 'node:fs/promises';
+import { stat,readFile } from 'node:fs/promises';
 import { config } from '../src/lib/config';
 import { createJob, getJob, jobDir, readArtifact, saveJob } from '../src/lib/store';
 import { runPipeline } from '../src/pipeline';
 import { probe } from '../src/lib/process';
-import { QAReport, ShotResult } from '../src/lib/types';
+import { QAReport, ShotResult, Script } from '../src/lib/types';
 
 // Explicit test-only local website. Speech still uses the REAL configured Kokoro service.
 config.privateUrls = true;
@@ -33,7 +34,18 @@ try {
   if (job.status === 'FAILED') { job.status = 'RECEIVED'; job.error = undefined; await saveJob(job); }
   console.log(`Running real browser + Kokoro + FFmpeg pipeline: ${job.id}`);
   const log = setInterval(async () => { const j = await getJob(job.id); console.log(`${j?.status}: ${j?.detail}`); }, 10000);
-  try { await runPipeline(job.id); } finally { clearInterval(log); }
+  try {
+    const audioSource=process.env.SMOKE_AUDIO_SOURCE;
+    const ownText=audioSource?(await readArtifact<Script>(audioSource,'script.json')).text:undefined;
+    await approvedTestPipeline(job.id,{regenerate:process.env.SMOKE_REGENERATE==='true',ownText,upload:audioSource?async id=>{
+      const {POST}=await import('../src/app/api/jobs/[id]/narration/route');
+      const script=await readArtifact<Script>(id,'script.json'),form=new FormData();
+      form.set('audio',new File([await readFile(path.join(jobDir(audioSource),'narration.wav'))],'external-narration.wav'));
+      form.set('scriptVersion',String(script.review!.version));
+      const response=await POST(new Request('http://localhost:3000/api/jobs/narration',{method:'POST',body:form}),{params:Promise.resolve({id})});
+      assert.equal(response.status,202,await response.text());
+    }:undefined});
+  } finally { clearInterval(log); }
   const done = await getJob(job.id); assert.equal(done?.status, 'READY_FOR_REVIEW', done?.error);
   const file = path.join(jobDir(job.id), 'final.mp4');
   const info = await probe(file); const qa = await readArtifact<QAReport>(job.id, 'qa.json');

@@ -80,10 +80,11 @@ export async function checkVideo(id: string, research: Research, inventory: Inve
   const total = shots.reduce((sum, shot) => sum + shot.duration, 0);
   add('coverage', 'Full visual coverage', Math.abs(total - transcript.duration) < 0.1 && shots.length === recordings.length && new Set(recordings.map(r=>r.id)).size === shots.length && shots.every(s=>recordings.some(r=>r.id===s.id)), 'Shot plan follows narration timing without gaps');
   add('fallbacks', 'Selected visuals captured successfully', recordings.every(r => !r.fallback), `${recordings.filter(r => r.fallback).length} screenshot fallbacks`, 'warning');
-  if (modelEnabled() && script.mode === 'model') {
+  if (modelEnabled() && script.mode === 'model' && (!script.review || script.review.source==='generated')) {
     const verdict = await auditScript(script, research);
     add('semantic', 'Claims match their evidence', verdict.supported, verdict.issues.join('; ') || 'Independent model audit passed');
   }
+  if(script.review && script.review.source!=='generated')add('human-script','Human-authored narration',false,'The exact user-approved script is authoritative. Structural source associations are checked; factual wording requires human review.','warning');
   const diagrams = shots.filter(s => s.type === 'diagram').map(s => ({ shotId: s.id, diagram: s.diagram, narration: transcript.segments.find(b=>b.id===s.segmentId)?.text }));
   if (diagrams.length && modelEnabled()) {
     const verdict = await modelJson('Audit these diagrams against research quotes. Every directed edge must be explicitly entailed by its cited evidence. Reject guessed architecture, causal direction, or unsupported nodes. Return {supported,issues}.', { diagrams, claims: research.claims }, z.object({ supported: z.boolean(), issues: z.array(z.string()) }),[], 'qa');

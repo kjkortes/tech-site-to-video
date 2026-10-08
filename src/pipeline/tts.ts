@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { config } from '../lib/config';
 import { readArtifact, writeArtifact, jobDir } from '../lib/store';
 import { Script, Transcript } from '../lib/types';
+import { scriptText } from '../lib/reviews';
 import { probe, sleep } from '../lib/process';
 
 const responseSchema = z.object({ id: z.string(), state: z.string(), error: z.object({ message: z.string().optional() }).passthrough().nullable().optional(), audio_url: z.string().nullable().optional(), timing_source: z.string().nullable().optional(),
@@ -16,7 +17,7 @@ export async function generateSpeech(id: string, script: Script): Promise<Transc
     let response: Response;
     try {
       response = await fetch(`${config.ttsBase}/api/jobs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(15000),
-        body: JSON.stringify({ engine: 'kokoro', text: segments.join('\n\n'), segments, language: 'a', primary_voice: config.ttsVoice, preset: 'neutral', output_format: 'wav', normalize: true, pause_ms: 180 }) });
+        body: JSON.stringify({ engine: 'kokoro', text: scriptText(script), segments, language: 'a', primary_voice: config.ttsVoice, preset: 'neutral', output_format: 'wav', normalize: true, pause_ms: 180 }) });
     } catch { throw new Error(`Kokoro is unavailable at ${config.ttsBase}. Start kokoro-local-tts, then resume this project.`); }
     if (!response.ok) throw new Error(`Kokoro rejected narration (HTTP ${response.status}). Check TTS_VOICE and service settings.`);
     const job = responseSchema.parse(await response.json());

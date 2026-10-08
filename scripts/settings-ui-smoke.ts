@@ -60,7 +60,7 @@ try {
   await create.getByLabel('Reasoning effort').selectOption('low');
   await create.getByLabel('Creative direction').selectOption('restrained');
   await create.getByLabel('Website or GitHub URL').fill('https://example.com');
-  await create.getByRole('button', { name: 'Generate video' }).click();
+  await create.getByRole('button', { name: 'Start project' }).click();
   await page.locator('.project-model summary').click();
   assert.equal(job?.llm?.effort, 'low'); assert.equal(settings.defaults.effort, 'high');
   const project = page.locator('.project-model');

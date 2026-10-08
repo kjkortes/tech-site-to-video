@@ -6,6 +6,7 @@ import path from 'node:path';
 import { withJobLock } from '@/lib/lock';
 import { enqueue } from '@/lib/queue';
 import { apiError, requireLocalMutation } from '@/lib/api';
+import { approveScript, approveAudio, saveScript, backToScript, prepareNarration, archiveAudio, adoptAudioTranscript, scriptApproved, enterScriptReview } from '@/lib/reviews';
 import { resolveModelSettings } from '@/lib/model-settings';
 export const runtime = 'nodejs';
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -15,11 +16,26 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const result = await withJobLock(id, async () => {
       const job = await getJob(id);
       if (!job) throw new Error('Project not found');
-      if (!['READY_FOR_REVIEW', 'APPROVED', 'SKIPPED', 'FAILED'].includes(job.status)) throw new Error('Wait for generation to finish before changing this project');
+
       if (input.llm) {
-        if (!['regenerate', 'resume'].includes(input.action)) throw new Error('Model settings can only change when resuming or regenerating');
+        if (!['regenerate', 'resume','regenerate-script'].includes(input.action)) throw new Error('Model settings can only change when resuming or regenerating');
         job.llm = await resolveModelSettings(input.llm, job.llm);
       }
+      if(input.action==='approve-script')return approveScript(job,input.scriptVersion);
+      if(input.action==='save-script')return saveScript(job,input.text||'',input.source||'edited',input.scriptVersion);
+      if(input.action==='back-script')return backToScript(job);
+      if(input.action==='generate-tts')return prepareNarration(job,'generated');
+      if(input.action==='approve-audio')return approveAudio(job,input.scriptVersion,input.audioVersion,input.mismatchResolution==='proceed');
+      if(input.action==='use-audio-transcript')return adoptAudioTranscript(job);
+      if(input.action==='replace-audio') {
+        if(job.status!=='AUDIO_REVIEW')throw new Error('Replace audio during audio review');
+        await archiveAudio(job);await invalidate(job,'TTS');job.status='NARRATION_PENDING';event(job,'Choose replacement narration. The approved script and research are retained.');await saveJob(job);return job;
+      }
+      if(input.action==='regenerate-script') {
+        if(job.status!=='SCRIPT_REVIEW')throw new Error('Regenerate during script review');
+        await archiveAudio(job);job.scriptFeedback=input.feedback;await invalidate(job,'SCRIPTING');return job;
+      }
+      if (!['READY_FOR_REVIEW', 'APPROVED', 'SKIPPED', 'FAILED'].includes(job.status)) throw new Error('Wait for generation to finish before changing this project');
       if (input.action === 'approve') {
         if (job.status !== 'READY_FOR_REVIEW') throw new Error('Only a video that passed QA can be approved');
         const qa = await readArtifact<QAReport>(id, 'qa.json');
@@ -32,7 +48,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         job.status = 'RECEIVED'; job.revision++; job.error = undefined; event(job, 'Resuming from saved progress');
       } else {
         const from: Record<typeof input.scope, Stage> = { full: 'RESEARCHING', script: 'SCRIPTING', voice: 'TTS', visuals: 'DIRECTING' };
-        await invalidate(job, from[input.scope]);
+        await archiveAudio(job);await invalidate(job, from[input.scope]);
+        if(input.scope==='voice') {
+          const script=await readArtifact<import('@/lib/types').Script>(id,'script.json');
+          if(scriptApproved(job,script))job.status='NARRATION_PENDING';else return enterScriptReview(job,script);
+        }
       }
       await saveJob(job); return job;
     });

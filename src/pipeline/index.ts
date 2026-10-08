@@ -1,5 +1,8 @@
 import { Job, Research, Inventory, Script, Transcript, Shot, ShotResult, Stage, stages, stageLabels } from '../lib/types';
 import { readArtifact, writeArtifact, saveJob, event, getJob, invalidate } from '../lib/store';
+import { runnable } from '../lib/workflow';
+import { scriptApproved, audioApproved, enterScriptReview, persistScript, fileDigest, jsonDigest, humanScript } from '../lib/reviews';
+import { prepareUploadedSpeech } from './narration';
 import { withJobLock } from '../lib/lock';
 import { research } from './research';
 import { explore, refreshInventoryCapture } from './explore';
@@ -12,7 +15,7 @@ import { direct, visualDirector, directorRevision, validatePlan } from './direct
 import { recordShots, shotSignature } from './record';
 import { editVideo } from './edit';
 import { checkVideo } from './qa';
-import { sleep } from '../lib/process';
+import { sleep, probe } from '../lib/process';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { jobDir } from '../lib/store';
@@ -28,7 +31,7 @@ import { addEvidenceContext } from './evidence-context';
 export async function runPipeline(id: string) {
   return withJobLock(id, async () => {
     const job = await getJob(id);
-    if (!job || ['APPROVED', 'SKIPPED', 'READY_FOR_REVIEW', 'FAILED'].includes(job.status)) return;
+    if (!job || !runnable(job)) return job;
     if (!job.llm) { job.llm = await resolveModelSettings(); await saveJob(job); }
     return withModelSettings(job.llm, async () => {
     let active: Stage = 'RESEARCHING';
@@ -53,6 +56,13 @@ export async function runPipeline(id: string) {
             // A missing clip invalidates the assembled edit, while all surviving clips remain reusable.
             job!.completed = job!.completed.filter(s => !['RECORDING', 'EDITING', 'QA'].includes(s));
             await saveJob(job!);
+          } else if(name==='TTS') {
+            // Repair only speech/timing checkpoints. Keep the original upload and
+            // synthesis chunks, revoke approval, and require a fresh audio review.
+            await invalidate(job!, 'DIRECTING');
+            job!.completed=job!.completed.filter(s=>s!=='TTS');
+            if(job!.narration){job!.narration.version++;job!.narration.state='pending';job!.narration.approvedAt=undefined;}
+            await saveJob(job!);
           } else await invalidate(job!, name);
         }
       }
@@ -71,7 +81,7 @@ export async function runPipeline(id: string) {
     try {
       const facts = await stage<Research>('RESEARCHING', 'research.json', () => research(job.url));
       job.title = facts.title; await saveJob(job);
-      let inventory = await stage<Inventory>('EXPLORING', 'inventory.json', () => explore(id, facts));
+      let inventory = await stage<Inventory>('EXPLORING', 'inventory.json', () => explore(id, facts,job.contentMode));
       if (!matchesCapture(inventory) || inventory.directorRevision !== directorRevision || inventory.mapRevision !== mapRevision) {
         refreshingCapture = true;
         active = 'EXPLORING'; job.status = 'EXPLORING';
@@ -96,19 +106,34 @@ export async function runPipeline(id: string) {
         if(savedScript.outline) for(const visit of savedScript.outline.visits) visit.sectionId=savedScript.segments.find(s=>s.visitId===visit.id)?.sectionId||visit.sectionId;
         try {validateScript(savedScript,facts,inventory);await writeArtifact(id,'script.json',savedScript);}catch{scriptNeedsRefresh=true;}
       }
+      if(savedScript?.review && savedScript.review.source!=='generated' && scriptNeedsRefresh) {
+        // Human wording remains authoritative through renderer/map upgrades.
+        const rebound=humanScript(savedScript.text!,savedScript.review.source,savedScript,inventory,facts);
+        rebound.review=savedScript.review;rebound.revision=storyRevision;
+        validateScript(rebound,facts,inventory);await writeArtifact(id,'script.json',rebound);scriptNeedsRefresh=false;
+      }
       if(savedScript && scriptNeedsRefresh && job.completed.includes('SCRIPTING')) {
         event(job,'Updating narration to the concise connected story arc; research is retained');
         await invalidate(job,'SCRIPTING');
       }
       const script = await stage<Script>('SCRIPTING', 'script.json', async () => {
         const outline=await buildOutline(facts,inventory);await writeArtifact(id,'story-outline.json',outline);
-        return writeScript(facts,inventory,outline);
+        return persistScript(job,await writeScript(facts,inventory,outline,job.scriptFeedback),'generated');
       });
+      if(!scriptApproved(job,script))return enterScriptReview(job,script);
+      if(!job.narration || job.narration.state==='stale') {job.status='NARRATION_PENDING';event(job,'Choose generated TTS or upload narration. Video generation is waiting.');await saveJob(job);return job;}
       if(script.outline)await writeArtifact(id,'story-outline.json',script.outline);
-      const speech = await stage<Transcript>('TTS', 'transcript.json', () => generateSpeech(id, script));
+      const speech = await stage<Transcript>('TTS', 'transcript.json', () => job.narration!.source==='uploaded'?prepareUploadedSpeech(job,script):generateSpeech(id, script));
       speech.segments=speech.segments.map(s=>({...s,sectionId:script.segments.find(b=>b.id===s.id)?.sectionId,visitId:script.segments.find(b=>b.id===s.id)?.visitId}));
       await writeArtifact(id,'transcript.json',speech);
-      job.duration = speech.duration; await saveJob(job);
+      job.duration = speech.duration;
+      if(!audioApproved(job,script,speech)) {
+        job.narration.state='ready';job.narration.duration=speech.duration;job.narration.hash=await fileDigest(id,'narration.wav');job.narration.transcriptHash=jsonDigest(speech);job.narration.alignment=speech.timingSource;
+        const audioInfo=await probe(path.join(jobDir(id),'narration.wav'));job.narration.format ||= audioInfo.streams.find(s=>s.codec_type==='audio')?.codec_name;job.narration.sampleRate ||= Number(audioInfo.streams.find(s=>s.codec_type==='audio')?.sample_rate);
+        job.status='AUDIO_REVIEW';event(job,'Listen to the narration, then approve audio to begin video generation.');await saveJob(job);return job;
+      }
+      if(job.narration.hash!==await fileDigest(id,'narration.wav'))throw new Error('Approved narration changed; replace and review the audio before generating video');
+      await saveJob(job);
       const shots = await stage<Shot[]>('DIRECTING', 'shot-plan.json', async () => {
         const plan = await visualDirector(speech, inventory, facts, id);
         await writeArtifact(id, 'director-report.json', { ...plan.diagnostics, notes: plan.notes, directorRevision });

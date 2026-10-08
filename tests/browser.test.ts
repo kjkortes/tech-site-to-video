@@ -59,7 +59,7 @@ test('capture migration replaces mobile and outdated desktop clips', () => {
   assert.equal(matchesCapture({ captureMode: 'desktop', captureViewport: { ...viewport }, captureRevision }), true);
 });
 
-test('GitHub captures preserve native README layout and source context', async () => {
+test('GitHub promotional captures reflow README without scaling and preserve source context', async () => {
   const browser = await launchBrowser();
   try {
     const context = await newContext(browser);
@@ -79,10 +79,11 @@ test('GitHub captures preserve native README layout and source context', async (
     await context.route('**/*', route => route.fulfill({ contentType: 'text/html', body: fixture }));
     const page = await context.newPage();
     await navigate(page, 'https://github.com/storytold/photocraft');
-    assert.equal(await page.locator('[data-component="SplitPageLayout.Pane"]').isVisible(), true);
+    assert.equal(await page.locator('[data-component="SplitPageLayout.Pane"]').isVisible(), false);
     const article = await page.locator('article').boundingBox();
-    assert.ok(article && article.width === 888, `README retains its native width: ${article?.width}`);
+    assert.ok(article && article.width === 1016, `README expands into the sidebar space: ${article?.width}`);
     assert.ok(article && article.y >= 0 && article.y <= 100, `README opening should be at the top: ${article?.y}`);
+    assert.equal(await page.locator('article').evaluate(el=>getComputedStyle(el).transform),'none');
     const hero = await page.locator('.hero').boundingBox();
     assert.ok(hero && hero.y > 0 && hero.y + hero.height < viewport.height, 'Opening screenshot must be in frame');
     await perform(page, { type: 'scroll', text: 'PhotoCraft' });
@@ -105,4 +106,18 @@ test('clean capture detects consent overlays while ignoring hidden duplicates', 
     await page.locator('[role="dialog"]').last().evaluate(el=>(el as HTMLElement).style.display='none');
     assert.equal(await consentObscuresPage(page),false);
   } finally { await browser.close(); }
+});
+
+test('GitHub normalization supports legacy and semantic layouts, preserves typography and skips developer mode',async()=>{
+  const {normalizeGitHubReadme}=await import('../src/pipeline/browser');const browser=await launchBrowser();
+  try {
+    for(const legacy of [true,false]) {
+      const context=await newContext(browser);const page=await context.newPage();
+      const html=`<style>body{margin:0;font-size:16px}.layout{display:grid;grid-template-columns:720px 328px;gap:24px}article{margin:32px}.copy{max-width:720px}</style><header>GitHub · Owner/Editor</header><div class="layout"><div class="${legacy?'Layout-main':'unknown-main'}"><div class="copy"><article class="markdown-body"><h1>Editor</h1><p>Source introduction</p></article></div></div><div class="${legacy?'Layout-sidebar':'unknown-sidebar'}"><h2>About</h2><p>A useful editor</p><h2>Languages</h2><p>Rust</p></div></div>`;
+      await context.route('**/*',route=>route.fulfill({contentType:'text/html',body:html}));await page.goto('https://github.com/owner/editor');
+      const before=await page.locator('article').evaluate(el=>({width:el.getBoundingClientRect().width,font:getComputedStyle(el).fontSize}));const report=await normalizeGitHubReadme(page);
+      assert.equal(report?.sidebars,1);assert.equal(report?.width,1016);assert.ok(report!.width>before.width);assert.equal(report?.fontSize,before.font);assert.equal(report?.transform,'none');assert.equal(await page.locator('header').isVisible(),true);assert.equal(await page.locator(legacy?'.Layout-sidebar':'.unknown-sidebar').isVisible(),false);await context.close();
+    }
+    const context=await newContext(browser,undefined,'developer');await context.route('**/*',route=>route.fulfill({contentType:'text/html',body:'<article class="markdown-body">Editor introduction</article><aside><h2>About</h2>Editor</aside>'}));const page=await context.newPage();await navigate(page,'https://github.com/owner/editor');assert.equal(await page.locator('aside').isVisible(),true,'Developer sources retain metadata');
+  }finally{await browser.close();}
 });
