@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { z } from 'zod';
-import { launchBrowser, newContext, navigate, inspectPage, dismissConsent, perform, captureMode } from './browser';
+import { launchBrowser, newContext, navigate, inspectPage, dismissConsent, perform, captureMode, viewport } from './browser';
 import { config } from '../lib/config';
 import { modelJson, modelEnabled } from '../lib/llm';
 import { jobDir } from '../lib/store';
@@ -40,11 +40,11 @@ export async function explore(id: string, research: Research): Promise<Inventory
     }
   } finally { await browser.close(); }
   if (!scenes.length) throw new Error('No accessible visuals were found. Try a public documentation page.');
-  return { scenes, notes, captureMode };
+  return { scenes, notes, captureMode, captureViewport: { ...viewport } };
 }
 
 // Keep scene identities and scripts when an existing job switches capture mode.
-// Refresh its fallback images using the same mobile browser as the clean replay.
+// Refresh its fallback images using the same desktop viewport as the clean replay.
 export async function refreshInventoryCapture(id: string, inventory: Inventory): Promise<Inventory> {
   const browser = await launchBrowser();
   try {
@@ -54,6 +54,6 @@ export async function refreshInventoryCapture(id: string, inventory: Inventory):
       for (const action of scene.actions) await perform(page, action);
       await page.screenshot({ path: path.join(jobDir(id), scene.screenshot), animations: 'disabled' });
     }
-    return { ...inventory, captureMode };
+    return { ...inventory, captureMode, captureViewport: { ...viewport } };
   } finally { await browser.close(); }
 }

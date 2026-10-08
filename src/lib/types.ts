@@ -25,12 +25,12 @@ export const browserActionSchema = z.discriminatedUnion('type', [
 ]);
 export type BrowserAction = z.infer<typeof browserActionSchema>;
 export interface Scene { id: string; url: string; title: string; description: string; actions: BrowserAction[]; screenshot: string; sourceId?: string; }
-export interface Inventory { scenes: Scene[]; notes: string[]; captureMode?: 'mobile' | 'desktop'; }
+export interface Inventory { scenes: Scene[]; notes: string[]; captureMode?: 'mobile' | 'desktop'; captureViewport?: { width: number; height: number }; }
 export interface ScriptSegment { id: string; text: string; sceneId: string; claimIds: string[]; }
 export interface Script { title: string; segments: ScriptSegment[]; mode: 'model' | 'extractive'; }
 export interface TimedSegment extends ScriptSegment { start: number; end: number; }
 export interface Transcript { duration: number; segments: TimedSegment[]; words: { text: string; start: number; end: number }[]; timingSource: string; }
 export interface Shot { id: string; sceneId: string; start: number; duration: number; url: string; actions: BrowserAction[]; caption: string; }
-export interface ShotResult { id: string; clip: string; duration: number; trimStart: number; attempts: number; fallback: boolean; pageTitle: string; captureMode?: 'mobile' | 'desktop'; }
+export interface ShotResult { id: string; clip: string; duration: number; trimStart: number; attempts: number; fallback: boolean; pageTitle: string; captureMode?: 'mobile' | 'desktop'; captureViewport?: { width: number; height: number }; }
 export interface QACheck { id: string; label: string; passed: boolean; severity: 'error' | 'warning'; detail: string; }
 export interface QAReport { score: number; passed: boolean; checks: QACheck[]; checkedAt: string; }

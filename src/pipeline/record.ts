@@ -2,7 +2,7 @@ import path from 'node:path';
 import { mkdir, stat } from 'node:fs/promises';
 import { Inventory, Shot, ShotResult } from '../lib/types';
 import { jobDir, readArtifact, writeArtifact } from '../lib/store';
-import { launchBrowser, newContext, navigate, dismissConsent, perform, recordingSize, captureMode } from './browser';
+import { launchBrowser, newContext, navigate, dismissConsent, perform, recordingSize, captureMode, viewport, matchesCapture } from './browser';
 import { probe, run } from '../lib/process';
 
 export async function recordShots(id: string, shots: Shot[], inventory: Inventory, onProgress: (detail: string) => Promise<void>): Promise<ShotResult[]> {
@@ -12,7 +12,7 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
   try {
     for (const shot of shots) {
       const previous = saved.find(r => r.id === shot.id);
-      if (previous && previous.captureMode === captureMode && await stat(path.join(dir, previous.clip)).then(s => s.size > 0).catch(() => false)) {
+      if (previous && matchesCapture(previous) && await stat(path.join(dir, previous.clip)).then(s => s.size > 0).catch(() => false)) {
         const info = await probe(path.join(dir, previous.clip)).catch(() => null);
         if (info && Number(info.format.duration) >= previous.trimStart + shot.duration - 0.2) { results.push(previous); continue; }
       }
@@ -41,7 +41,7 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
           await video.saveAs(path.join(dir, clip)); await video.delete();
           const info = await probe(path.join(dir, clip));
           if (Number(info.format.duration) < trimStart + shot.duration - 0.2) throw new Error('Recorded shot is too short');
-          result = { id: shot.id, clip, trimStart, duration: shot.duration, attempts: attempt, fallback: false, pageTitle, captureMode };
+          result = { id: shot.id, clip, trimStart, duration: shot.duration, attempts: attempt, fallback: false, pageTitle, captureMode, captureViewport: { ...viewport } };
           break;
         } catch (error) {
           await context.close().catch(() => {}); await video?.delete().catch(() => {});
@@ -54,7 +54,7 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
         const clip = `clips/${shot.id}.mp4`;
         // An already discovered screenshot is a supporting visual, never exploration footage.
         await run('ffmpeg', ['-y', '-loop', '1', '-i', path.join(dir, scene.screenshot), '-vf', `scale=${recordingSize.width}:${recordingSize.height},zoompan=z='1+0.0002*on':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=1:s=${recordingSize.width}x${recordingSize.height}:fps=30`, '-t', String(shot.duration + 1), '-an', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', path.join(dir, clip)]);
-        result = { id: shot.id, clip, trimStart: 0, duration: shot.duration, attempts: 2, fallback: true, pageTitle: scene.title, captureMode };
+        result = { id: shot.id, clip, trimStart: 0, duration: shot.duration, attempts: 2, fallback: true, pageTitle: scene.title, captureMode, captureViewport: { ...viewport } };
       }
       results.push(result);
       // Save every shot immediately so process death never discards successful recording work.

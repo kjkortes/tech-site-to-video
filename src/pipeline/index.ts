@@ -3,7 +3,7 @@ import { readArtifact, writeArtifact, saveJob, event, getJob, invalidate } from 
 import { withJobLock } from '../lib/lock';
 import { research } from './research';
 import { explore, refreshInventoryCapture } from './explore';
-import { captureMode } from './browser';
+import { captureMode, matchesCapture } from './browser';
 import { writeScript } from './script';
 import { generateSpeech } from './tts';
 import { direct } from './direct';
@@ -28,6 +28,7 @@ export async function runPipeline(id: string) {
           if (name === 'TTS') await stat(path.join(jobDir(id), 'narration.wav'));
           if (name === 'RECORDING') {
             const clips = await readArtifact<ShotResult[]>(id, filename);
+            if (clips.some(clip => !matchesCapture(clip))) throw new Error('Browser capture layout changed');
             await Promise.all(clips.map(clip => stat(path.join(jobDir(id), clip.clip))));
           }
           if (name === 'QA') await stat(path.join(jobDir(id), 'final.mp4'));
@@ -57,7 +58,7 @@ export async function runPipeline(id: string) {
       const facts = await stage<Research>('RESEARCHING', 'research.json', () => research(job.url));
       job.title = facts.title; await saveJob(job);
       let inventory = await stage<Inventory>('EXPLORING', 'inventory.json', () => explore(id, facts));
-      if (inventory.captureMode !== captureMode) {
+      if (!matchesCapture(inventory)) {
         refreshingCapture = true;
         active = 'EXPLORING'; job.status = 'EXPLORING';
         event(job, `Refreshing ${captureMode} browser visuals`); await saveJob(job);

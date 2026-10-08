@@ -1,12 +1,14 @@
-import { chromium, devices, Browser, BrowserContext, Page } from 'playwright';
+import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { validatePublicUrl } from '../lib/network';
 import { BrowserAction } from '../lib/types';
 import { config } from '../lib/config';
+import { videoLayout } from './video-layout';
 
-export const captureMode = config.height > config.width ? 'mobile' : 'desktop';
-// Phone-width CSS pixels trigger the site's real responsive layout. The height
-// matches the visible browser panel, avoiding letterboxing in the final edit.
-export const viewport = captureMode === 'mobile' ? { width: 390, height: 484 } : { width: 1000, height: 1240 };
+export const captureMode = 'desktop' as const;
+export const viewport = videoLayout.viewport;
+export function matchesCapture(value: { captureMode?: 'mobile' | 'desktop'; captureViewport?: { width: number; height: number } }) {
+  return value.captureMode === captureMode && value.captureViewport?.width === viewport.width && value.captureViewport?.height === viewport.height;
+}
 // Playwright records CSS pixels and does not upscale to deviceScaleFactor.
 // A larger recording canvas would leave empty space beside and below the page.
 export const recordingSize = { ...viewport };
@@ -33,8 +35,7 @@ export async function guardContext(context: BrowserContext) {
 }
 export async function newContext(browser: Browser, recordingDir?: string) {
   const context = await browser.newContext({
-    ...(captureMode === 'mobile' ? devices['Pixel 7'] : {}),
-    viewport, deviceScaleFactor: 2, reducedMotion: 'reduce', serviceWorkers: 'block', acceptDownloads: false,
+    viewport, isMobile: false, hasTouch: false, deviceScaleFactor: 2, reducedMotion: 'reduce', serviceWorkers: 'block', acceptDownloads: false,
     ...(recordingDir ? { recordVideo: { dir: recordingDir, size: recordingSize } } : {}) });
   await guardContext(context); return context;
 }
