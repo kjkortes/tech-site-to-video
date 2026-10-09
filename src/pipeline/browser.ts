@@ -1,11 +1,13 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { validatePublicUrl } from '../lib/network';
-import { BrowserAction, WalkLocation, ContentMode } from '../lib/types';
+import { BrowserAction, WalkLocation, ContentMode, PageMotion, Shot, Inventory } from '../lib/types';
 import { config } from '../lib/config';
 import { videoLayout } from './video-layout';
+import { mapDocument } from './document-map';
+import { scrollCorridor, pageMotionY } from './page-motion';
 
 export const captureMode = 'desktop' as const;
-export const captureRevision = 7;
+export const captureRevision = 9;
 export const viewport = videoLayout.viewport;
 export function matchesCapture(value: { captureMode?: 'mobile' | 'desktop'; captureViewport?: { width: number; height: number }; captureRevision?: number }) {
   return value.captureRevision === captureRevision && value.captureMode === captureMode && value.captureViewport?.width === viewport.width && value.captureViewport?.height === viewport.height;
@@ -119,7 +121,7 @@ export async function dismissConsent(page: Page) {
 }
 export async function sectionScrollTarget(page: Page, location: WalkLocation) {
   const locators=[...(location.selector?[page.locator(location.selector).filter({visible:true}).first()]:[]),page.getByRole('heading',{name:location.heading,exact:true}).filter({visible:true}).first()];
-  for(const target of locators) try {if(await target.count())return await target.evaluate(el=>Math.max(0,Math.min(document.documentElement.scrollHeight-innerHeight,el.getBoundingClientRect().top+scrollY-80)));}catch{/* DOM changes use semantic heading or stored position. */}
+  for(const target of locators) try {if(await target.count())return await target.evaluate((el,offset)=>Math.max(0,Math.min(document.documentElement.scrollHeight-innerHeight,Math.max(0,el.getBoundingClientRect().top+scrollY-80)+offset)),location.offsetY||0);}catch{/* DOM changes use semantic heading or stored position. */}
   return page.evaluate(y=>Math.max(0,Math.min(document.documentElement.scrollHeight-innerHeight,y)),location.scrollY);
 }
 export async function positionAtSection(page: Page, location: WalkLocation) {
@@ -129,6 +131,39 @@ export async function scrollToSection(page: Page, location: WalkLocation, durati
   const destination=await sectionScrollTarget(page,location),milliseconds=Math.min(2,Math.max(.3,duration))*1000;
   // Seek to a stored origin before recording; this exact easing is the only visible navigation.
   await page.evaluate(`new Promise(resolve=>{const start=scrollY,begin=performance.now();function step(now){const t=Math.min(1,(now-begin)/${milliseconds});const eased=t*t*(3-2*t);scrollTo({top:start+(${destination}-start)*eased,behavior:'instant'});if(t<1)requestAnimationFrame(step);else resolve();}requestAnimationFrame(step);})`);
+}
+// Resolve offsets against the current DOM before the kept recording interval.
+// The same section selectors are retained; layout changes can only reduce travel.
+export async function resolvePageMotion(page:Page,shot:Shot,inventory:Inventory):Promise<PageMotion|undefined> {
+  const walk=shot.walkthrough,m=walk?.pageMotion;
+  if(!walk || !m)return;
+  if(!inventory.pages?.some(p=>p.id===walk.location.pageId))throw new Error('Scroll section has no measured document ownership');
+  const mapped=await mapDocument(page,'live',walk.location.pageId,0);
+  const section=mapped.sections.find(s=>s.selector===walk.location.selector && s.heading===walk.location.heading)||mapped.sections.find(s=>s.heading===walk.location.heading);
+  if(!section)throw new Error('Cannot verify active scroll section in the live document');
+  const startY=await sectionScrollTarget(page,walk.location),c=scrollCorridor(section,startY);
+  const pageMax=await page.evaluate(()=>Math.max(0,document.documentElement.scrollHeight-innerHeight));
+  const maxY=Math.min(c.maxY,pageMax);
+  // Never jump backward to enlarge a corridor. A changed/shortened section holds.
+  if(maxY-startY<40)return;
+  return {...m,...c,startY,maxY,endY:Math.min(maxY,startY+m.endY-m.startY),idealEndY:startY+m.idealEndY-m.startY};
+}
+export async function animatePageMotion(page:Page,m:PageMotion,elapsed=0) {
+  // One clock owns the hold, cosine velocity ramps, linear middle and final hold.
+  // Browser inertia/CSS smooth scrolling are bypassed; every Y is time-derived.
+  const evaluateMotion=pageMotionY.toString();
+  return page.evaluate(`new Promise(resolve=>{
+    const __name=fn=>fn,m=${JSON.stringify(m)},offset=${elapsed},at=${evaluateMotion},begin=performance.now(),samples=[];
+    let last=-1;
+    function step(now){
+      const time=Math.min(m.holdIn+m.motionDuration+m.holdOut,(now-begin)/1000+offset);
+      const y=at(m,time);scrollTo({top:y,behavior:'instant'});
+      const slot=Math.floor(time*5);
+      if(slot!==last){samples.push({time,y:scrollY});last=slot;}
+      if(time<m.holdIn+m.motionDuration+m.holdOut)requestAnimationFrame(step);else resolve(samples);
+    }
+    requestAnimationFrame(step);
+  })`) as Promise<{time:number;y:number}[]>;
 }
 const unsafeInteraction = /delete|remove|purchase|checkout|pay\b|subscribe|sign.?up|log.?in|sign.?in|authorize|publish|deploy|send|submit|install|download|start free|create account|buy|connect|accept all/i;
 export async function perform(page: Page, action: BrowserAction) {

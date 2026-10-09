@@ -26,6 +26,13 @@ export function validateCameraPlan(shots:Shot[],inventory:Inventory,transcript:T
   for(let i=0;i<shots.length;i++) {
     const shot=shots[i],mode=cameraMode(shot),g=summary.views[i],previous=shots[i-1],next=shots[i+1];
     const requested=shot.camera?.maxZoom??1;
+    if(shot.mediaMotion) {
+      const m=shot.mediaMotion,asset=assets.find(a=>a.id===shot.assetId);
+      if(mode!=='media' || asset?.type!=='image' || !shot.support || !m.reason || m.kind!=='attention' || ![m.holdIn,m.motionDuration,m.holdOut,m.maxZoom].every(Number.isFinite) || m.maxZoom<1 || m.maxZoom>1.05 || m.holdIn<1.5 || m.holdOut<.6 || m.motionDuration<=0 || Math.abs(m.holdIn+m.motionDuration+m.holdOut-shot.duration)>.025)
+        add('media-attention','Product attention motion must establish wide, remain at or below 1.05x, and settle inside the supported phrase',shot.id);
+      if(m.focus && (![m.focus.x,m.focus.y,m.focus.width,m.focus.height].every(Number.isFinite) || m.focus.x<0 || m.focus.y<0 || m.focus.width<=0 || m.focus.height<=0 || m.focus.x+m.focus.width>1 || m.focus.y+m.focus.height>1))add('media-attention-focus','Product attention focus must be a measured source region inside the full image',shot.id);
+      if(g.visibleSourceArea<.94)add('media-attention-crop','Subtle product motion must retain at least 94% of its source',shot.id);
+    }
     if(mode!=='detail' && (requested>1 || shot.camera?.focus || shot.motion && shot.motion!=='hold'))add('default-zoom','Walkthrough and media must remain at normal scale without automatic camera motion',shot.id);
     if(mode==='walkthrough' && (shot.focus || shot.highlight || shot.framing==='detail'))add('page-crop','Normal page views cannot crop to individual text or controls',shot.id);
     if(mode==='detail') {

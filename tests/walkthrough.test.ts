@@ -81,7 +81,7 @@ test('paragraph navigation stays forward and purposeful browser holds do not ear
   assert.ok(shots.every(s=>!s.focus),'Do not automatically enlarge individual paragraphs');
   const report=validatePlan(shots,scoped,speech);assert.ok(report.passed,JSON.stringify(report.issues));
   assert.ok(!validatePlan(shots,scoped,speech).issues.some(i=>i.code==='repeated-framing'||i.code==='long-context'));
-  const reversed=shots.map((s,i)=>i===shots.length-1?{...s,walkthrough:{...s.walkthrough!,location:{...s.walkthrough!.location,scrollY:100}}}:s);
+  const reversed=shots.map((s,i)=>i===shots.length-1?{...s,walkthrough:{...s.walkthrough!,location:{...s.walkthrough!.location,scrollY:-100}}}:s);
   assert.ok(validateContinuity(reversed,scoped,speech).issues.some(i=>i.code==='backward-travel'));
 });
 test('model visual selection cannot insert distant media into a contextual cutaway',async()=>{
@@ -131,5 +131,17 @@ test('clean navigation scrolls from a stored section to its actual destination a
     assert.ok(Math.abs(await page.evaluate(()=>scrollY)-target)<2,'Visible navigation lands on the section, not an arbitrary 300px travel');
     await page.evaluate(()=>scrollTo(0,4000));await positionAtSection(page,location);
     assert.ok(Math.abs(await page.evaluate(()=>scrollY)-target)<2,'Return framing matches the earlier section');
+  } finally {await browser.close();}
+});
+
+test('a horizontal feature card retains its full vertical boundary',async()=>{
+  const browser=await launchBrowser();
+  try {
+    const page=await browser.newPage();
+    await page.setContent('<article class="markdown-body"><h1>Editor</h1><table><tr><td style="height:900px"><img width="300" height="600"><h3>Layers</h3><p>Editable layers.</p></td><td><img width="300" height="600"><h3>Export</h3><p>Export images.</p></td></tr></table><h2>Installation</h2></article>');
+    const sections=(await mapDocument(page,'source','page',0)).sections;
+    const card=sections.find(s=>s.heading==='Layers')!;
+    assert.ok(card.endY-card.scrollY>800,'Next horizontal card is not a vertical scroll boundary');
+    assert.ok(card.endY<=sections.find(s=>s.heading==='Installation')!.scrollY+80);
   } finally {await browser.close();}
 });

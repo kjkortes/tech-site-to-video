@@ -20,13 +20,17 @@ export function cameraGeometry(shot:Shot, source:SourceSize=videoLayout.viewport
   const desired=justified?Math.min(maximumDetailZoom,Math.max(1,shot.camera?.maxZoom??1.08)):1;
   const motion=shot.camera?.motion||shot.motion||'hold';
   const t=motion==='hold'?1:Math.max(0,Math.min(1,progress));
-  const zoom=motion==='slow-pull'?desired+(1-desired)*t:1+(desired-1)*t;
+  const mediaZoom=mode==='media' && shot.mediaMotion?shot.mediaMotion.maxZoom:1;
+  const zoom=mode==='media'?1+(mediaZoom-1)*Math.max(0,Math.min(1,progress)):motion==='slow-pull'?desired+(1-desired)*t:1+(desired-1)*t;
   const clamp=(n:number,max:number)=>Math.max(-max,Math.min(max,n));
   // A small, directed reframe can move edge controls left of platform buttons.
   // It shifts the source over spare canvas rather than increasing cover zoom.
   const r=region;
-  const x=justified && r?clamp(left+r.x*sx<24/1080/zoom?left+r.x*sx-24/1080/zoom:Math.max(0,left+(r.x+r.width)*sx-862/1080/zoom),.3)*t:0;
-  const y=justified && r?clamp(top+r.y*sy<108/1920/zoom?top+r.y*sy-108/1920/zoom:Math.max(0,top+(r.y+r.height)*sy-1316/1920/zoom),.3)*t:0;
+  const attention=mode==='media'?shot.mediaMotion:undefined;
+  const cx=attention?.focus?left+(attention.focus.x+attention.focus.width/2)*sx:.5;
+  const cy=attention?.focus?top+(attention.focus.y+attention.focus.height/2)*sy:.5;
+  const x=attention?cx*(1-1/zoom):justified && r?clamp(left+r.x*sx<24/1080/zoom?left+r.x*sx-24/1080/zoom:Math.max(0,left+(r.x+r.width)*sx-862/1080/zoom),.3)*t:0;
+  const y=attention?cy*(1-1/zoom):justified && r?clamp(top+r.y*sy<108/1920/zoom?top+r.y*sy-108/1920/zoom:Math.max(0,top+(r.y+r.height)*sy-1316/1920/zoom),.3)*t:0;
   const visibleWidth=Math.max(0,Math.min(left+sx,x+1/zoom)-Math.max(left,x));
   const visibleHeight=Math.max(0,Math.min(top+sy,y+1/zoom)-Math.max(top,y));
   return {mode,sx,sy,left,top,fit,base:1,zoom,x,y,region,visibleSourceArea:Math.min(1,visibleWidth*visibleHeight/(sx*sy))};

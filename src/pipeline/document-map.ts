@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import type { DocumentPage, Inventory, PageSection, WalkLocation } from '../lib/types';
 
-export const mapRevision = 2;
+export const mapRevision = 3;
 export async function mapDocument(page: Page, sourceId: string, pageId: string, order: number): Promise<DocumentPage> {
   const inspect = (input: { sourceId: string; pageId: string; order: number }) => {
     const root = document.querySelector('article.markdown-body') || document.querySelector('main,article,[role="main"]') || document.body;
@@ -36,7 +36,7 @@ export async function mapDocument(page: Page, sourceId: string, pageId: string, 
       let parentId: string|undefined;
       for(let i=index-1;i>=0;i--) if ((i===0?1:Number(anchors[i].tagName.slice(1)))<level) { parentId=`${input.pageId}-section-${i}`;break; }
       const target=boundaries[index];
-      return { id,pageId:input.pageId,sourceId:input.sourceId,heading:(index===0?first?.textContent||'Introduction':el.textContent||'Section').replace(/\s+/g,' ').trim(),order:index,parentId,selector:selector(target),scrollY:Math.max(0,target.getBoundingClientRect().top+scrollY-80),endY:boundaries[index+1]?boundaries[index+1].getBoundingClientRect().top+scrollY:document.documentElement.scrollHeight,text,assetIds:[] as string[] };
+      return { id,pageId:input.pageId,sourceId:input.sourceId,heading:(index===0?first?.textContent||'Introduction':el.textContent||'Section').replace(/\s+/g,' ').trim(),order:index,parentId,selector:selector(target),scrollY:Math.max(0,target.getBoundingClientRect().top+scrollY-80),endY:target!==el && index>0?target.getBoundingClientRect().bottom+scrollY:boundaries[index+1]?boundaries[index+1].getBoundingClientRect().top+scrollY:root.getBoundingClientRect().bottom+scrollY,text,assetIds:[] as string[] };
     });
     for(const section of sections) {
       const blocks=[...root.querySelectorAll('p,pre,li')].filter(el=>{

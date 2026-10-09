@@ -1,0 +1,804 @@
+{
+  "inventory": {
+    "pages": [
+      {
+        "id": "page-source-1",
+        "sourceId": "source-1",
+        "url": "https://github.com/storytold/photocraft",
+        "title": "GitHub - storytold/photocraft: An open-source, clean-room reimplementation of Adobe Photoshop in pure Rust \u00b7 GitHub",
+        "order": 0,
+        "sections": [
+          {
+            "id": "page-source-1-section-0",
+            "pageId": "page-source-1",
+            "sourceId": "source-1",
+            "heading": "PhotoCraft",
+            "order": 0,
+            "selector": "body > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > main:nth-of-type(1) > turbo-frame:nth-of-type(1) > div:nth-of-type(1) > react-app:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > article:nth-of-type(1)",
+            "scrollY": 1573,
+            "endY": 2895.140625,
+            "text": "PhotoCraft Image editing; an open-source, clean-room reimplementation of Adobe Photoshop, rebuilt in pure Rust. Layers, masks, adjustment layers, layer styles, type, vectors, brushes and real PSD files, in a native app written entirely in Rust. Open source, offline, and yours. PhotoCraft on getartcraft.com \u00b7 ArtCraft \u00b7 All Crafting Apps A caption card with a drop shadow, live type, and Vibrance and Curves adjustment layers, with the Curves editor open. The Great Wave off Kanagawa, Katsushika Hokusai, c. 1831 Note ArtCraft is a community of artists from all walks of life. Digital, generative, music, games \u2014 if you make things, you're one of us. Come say hi on Discord. Features \u00b7 Everything in the box \u00b7 PSD \u00b7 Agents \u00b7 Under the hood \u00b7 Get started \u00b7 Downloads \u00b7 Crafting Apps \u00b7 Discord",
+            "assetIds": [
+              "asset-1"
+            ],
+            "sceneId": "scene-1"
+          },
+          {
+            "id": "page-source-1-section-3",
+            "pageId": "page-source-1",
+            "sourceId": "source-1",
+            "heading": "\ud83d\uddc2\ufe0f Real PSD files",
+            "order": 3,
+            "parentId": "page-source-1-section-0",
+            "selector": "body > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > main:nth-of-type(1) > turbo-frame:nth-of-type(1) > div:nth-of-type(1) > react-app:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > article:nth-of-type(1) > markdown-accessiblity-table:nth-of-type(1) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(3) > div:nth-of-type(1) > h3:nth-of-type(1)",
+            "scrollY": 2815.140625,
+            "endY": 2895.140625,
+            "text": "\ud83d\uddc2\ufe0f Real PSD files Open, edit and save layered Photoshop documents. Re-saving keeps the render of 307 of the 309 psd-tools test files.",
+            "assetIds": [],
+            "sceneId": "scene-4"
+          },
+          {
+            "id": "page-source-1-section-5",
+            "pageId": "page-source-1",
+            "sourceId": "source-1",
+            "heading": "Features",
+            "order": 5,
+            "parentId": "page-source-1-section-0",
+            "selector": "body > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > main:nth-of-type(1) > turbo-frame:nth-of-type(1) > div:nth-of-type(1) > react-app:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > article:nth-of-type(1) > div:nth-of-type(3) > h2:nth-of-type(1)",
+            "scrollY": 3071.140625,
+            "endY": 3245.828125,
+            "text": "Features Every screenshot here is the real app at work on public-domain art, rendered offscreen through its control channel.",
+            "assetIds": [],
+            "sceneId": "scene-6"
+          },
+          {
+            "id": "page-source-1-section-6",
+            "pageId": "page-source-1",
+            "sourceId": "source-1",
+            "heading": "Edit without regret",
+            "order": 6,
+            "parentId": "page-source-1-section-5",
+            "selector": "body > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > main:nth-of-type(1) > turbo-frame:nth-of-type(1) > div:nth-of-type(1) > react-app:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > article:nth-of-type(1) > markdown-accessiblity-table:nth-of-type(2) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(1)",
+            "scrollY": 3165.828125,
+            "endY": 3926.515625,
+            "text": "Levels and Vibrance adjustment layers, with the live Histogram panel.Impression, Sunrise, Claude Monet, 1872 Edit without regret Adjustment layers keep every edit live. Stack Levels, Curves, Vibrance, Hue/Saturation and a dozen more, mask them to an area, reorder them, or turn them off, and your original pixels never change. 16 adjustment layers that also apply directly to pixels, including Curves with per-channel editing, Levels with a live histogram, Black & White, Channel Mixer, Gradient Map, Photo Filter, Selective Color and Color Lookup (.cube, .3dl, .look). Plus Shadows/Highlights, Replace Color, Match Color, HDR Toning, Desaturate and Equalize.",
+            "assetIds": [
+              "asset-2"
+            ],
+            "sceneId": "scene-7"
+          },
+          {
+            "id": "page-source-1-section-24",
+            "pageId": "page-source-1",
+            "sourceId": "source-1",
+            "heading": "Get started",
+            "order": 24,
+            "parentId": "page-source-1-section-0",
+            "selector": "body > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > main:nth-of-type(1) > turbo-frame:nth-of-type(1) > div:nth-of-type(1) > react-app:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > article:nth-of-type(1) > div:nth-of-type(9) > h2:nth-of-type(1)",
+            "scrollY": 7592.828125,
+            "endY": 8455.015625,
+            "text": "Get started git clone https://github.com/storytold/photocraft cd photocraft cargo run --release -p photocraft -- image.psd # the desktop app cargo test --workspace # the test suite Japanese fonts for the UI and Type tool come from craft-fonts, an optional build input (desktop release builds always include it). Without it PhotoCraft uses your system's CJK fonts: git clone https://github.com/storytold/craft-fonts ../craft-fonts CRAFT_FONTS_DIR=\"$PWD/../craft-fonts\" cargo run --release -p photocraft New contributors and AI agents: start with AGENTS.md, then docs/. Installers for macOS, Windows, Linux, FreeBSD and the web are attached to each GitHub release. On Linux you can pick an AppImage, a .deb, an .rpm, a tarball or a Flatpak bundle. The bundle needs the freedesktop runtime from Flathub, which flatpak offers to install along with it: flatpak install --user photocraft-<version>-linux-x8",
+            "assetIds": [
+              "asset-10",
+              "asset-11",
+              "asset-12",
+              "asset-13",
+              "asset-14"
+            ],
+            "sceneId": "scene-25"
+          }
+        ]
+      }
+    ],
+    "mapRevision": 3,
+    "scenes": [
+      {
+        "id": "scene-1",
+        "url": "https://github.com/storytold/photocraft",
+        "title": "PhotoCraft",
+        "sectionId": "page-source-1-section-0",
+        "actions": [
+          {
+            "type": "scroll",
+            "text": "PhotoCraft",
+            "y": 1491
+          }
+        ],
+        "screenshot": "exploration/scene-1.png",
+        "sourceId": "source-1",
+        "description": "PhotoCraft Image editing; an open-source, clean-room reimplementation of Adobe Photoshop, rebuilt in pure Rust. Layers, masks, adjustment layers, layer styles, type, vectors, brushes and real PSD files, in a native app written entirely in Rust. Open source, offline, and yours. PhotoCraft on getartcraft.com \u00b7 ArtCraft \u00b7 All Crafting Apps A caption card with a drop shadow, live type, and Vibrance and Curves adjustment layers, with the Curves editor open. The Great Wave off Kanagawa, Katsushika Hokusai, c. 1831 Note ArtCraft is a community of artists from all walks of life. Digital, generative, music, games \u2014 if you make things, you're one of us. Come say hi on Discord. Features \u00b7 Everything in the box \u00b7 PSD \u00b7 Agents \u00b7 Under the hood \u00b7 Get started \u00b7 Downloads \u00b7 Crafting Apps \u00b7 Discord"
+      },
+      {
+        "id": "scene-4",
+        "url": "https://github.com/storytold/photocraft",
+        "title": "\ud83d\uddc2\ufe0f Real PSD files",
+        "sectionId": "page-source-1-section-3",
+        "actions": [
+          {
+            "type": "scroll",
+            "text": "\ud83d\uddc2\ufe0f Real PSD files",
+            "y": 2721.140625
+          }
+        ],
+        "screenshot": "exploration/scene-4.png",
+        "sourceId": "source-1",
+        "description": "\ud83d\uddc2\ufe0f Real PSD files Open, edit and save layered Photoshop documents. Re-saving keeps the render of 307 of the 309 psd-tools test files."
+      },
+      {
+        "id": "scene-6",
+        "url": "https://github.com/storytold/photocraft",
+        "title": "Features",
+        "sectionId": "page-source-1-section-5",
+        "actions": [
+          {
+            "type": "scroll",
+            "text": "Features",
+            "y": 2977.140625
+          }
+        ],
+        "screenshot": "exploration/scene-6.png",
+        "sourceId": "source-1",
+        "description": "Features Every screenshot here is the real app at work on public-domain art, rendered offscreen through its control channel."
+      },
+      {
+        "id": "scene-7",
+        "url": "https://github.com/storytold/photocraft",
+        "title": "Edit without regret",
+        "sectionId": "page-source-1-section-6",
+        "actions": [
+          {
+            "type": "scroll",
+            "text": "Edit without regret",
+            "y": 3071.828125
+          }
+        ],
+        "screenshot": "exploration/scene-7.png",
+        "sourceId": "source-1",
+        "description": "Levels and Vibrance adjustment layers, with the live Histogram panel.Impression, Sunrise, Claude Monet, 1872 Edit without regret Adjustment layers keep every edit live. Stack Levels, Curves, Vibrance, Hue/Saturation and a dozen more, mask them to an area, reorder them, or turn them off, and your original pixels never change. 16 adjustment layers that also apply directly to pixels, including Curves with per-channel editing, Levels with a live histogram, Black & White, Channel Mixer, Gradient Map, Photo Filter, Selective Color and Color Lookup (.cube, .3dl, .look). Plus Shadows/Highlights, Replace Color, Match Color, HDR Toning, Desaturate and Equalize."
+      },
+      {
+        "id": "scene-25",
+        "url": "https://github.com/storytold/photocraft",
+        "title": "Get started",
+        "sectionId": "page-source-1-section-24",
+        "actions": [
+          {
+            "type": "scroll",
+            "text": "Get started",
+            "y": 7913.796875
+          }
+        ],
+        "screenshot": "exploration/scene-25.png",
+        "sourceId": "source-1",
+        "description": "Get started git clone https://github.com/storytold/photocraft cd photocraft cargo run --release -p photocraft -- image.psd # the desktop app cargo test --workspace # the test suite Japanese fonts for the UI and Type tool come from craft-fonts, an optional build input (desktop release builds always include it). Without it PhotoCraft uses your system's CJK fonts: git clone https://github.com/storytold/craft-fonts ../craft-fonts CRAFT_FONTS_DIR=\"$PWD/../craft-fonts\" cargo run --release -p photocraft New contributors and AI agents: start with AGENTS.md, then docs/. Installers for macOS, Windows, Linux, FreeBSD and the web are attached to each GitHub release. On Linux you can pick an AppImage, a .deb, an .rpm, a tarball or a Flatpak bundle. The bundle needs the freedesktop runtime from Flathub, which flatpak offers to install along with it: flatpak install --user photocraft-<version>-linux-x8"
+      }
+    ],
+    "assets": [
+      {
+        "sectionId": "page-source-1-section-0",
+        "documentOrder": 35,
+        "scrollY": 1840.390625,
+        "type": "image",
+        "url": "https://github.com/storytold/photocraft/blob/main/docs/images/photocraft-demo.jpg",
+        "selector": "body > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > main:nth-of-type(1) > turbo-frame:nth-of-type(1) > div:nth-of-type(1) > react-app:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > article:nth-of-type(1) > p:nth-of-type(6) > a:nth-of-type(1) > img:nth-of-type(1)",
+        "features": [
+          "PhotoCraft",
+          "PhotoCraft editing Hokusai's The Great Wave: a caption card with a drop shadow, Title and Credit type layers, Vibrance a"
+        ],
+        "description": "PhotoCraft PhotoCraft editing Hokusai's The Great Wave: a caption card with a drop shadow, Title and Credit type layers, Vibrance and Curves adjustment layers, and the Curves editor drawn over the image's histogram",
+        "width": 1932,
+        "height": 1210,
+        "id": "asset-1",
+        "sceneId": "scene-1",
+        "sourceId": "source-1",
+        "pageUrl": "https://github.com/storytold/photocraft",
+        "quality": 0.8999999999999999,
+        "confidence": 0.8,
+        "canEnlarge": true,
+        "animated": false,
+        "localPath": "assets/asset-1.png",
+        "captureMethod": "element",
+        "isolated": true
+      },
+      {
+        "sectionId": "page-source-1-section-6",
+        "documentOrder": 100,
+        "scrollY": 3078.328125,
+        "type": "image",
+        "url": "https://github.com/storytold/photocraft/blob/main/docs/images/photocraft-adjustments.jpg",
+        "selector": "body > div:nth-of-type(1) > div:nth-of-type(5) > div:nth-of-type(1) > main:nth-of-type(1) > turbo-frame:nth-of-type(1) > div:nth-of-type(1) > react-app:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(2) > article:nth-of-type(1) > markdown-accessiblity-table:nth-of-type(2) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > td:nth-of-type(1) > a:nth-of-type(1) > img:nth-of-type(1)",
+        "features": [
+          "Edit without regret",
+          "Monet's Impression, Sunrise with Levels and Vibrance adjustment layers; the Levels editor and the Histogram panel with m"
+        ],
+        "description": "Edit without regret Monet's Impression, Sunrise with Levels and Vibrance adjustment layers; the Levels editor and the Histogram panel with mean, standard deviation and median are open on the right Levels and Vibrance adjustment layers, with the live Histogram panel.Impression, Sunrise, Claude Monet, 1872 Edit without regret Adjustment layers keep every edit live. Stack Levels, Curves, Vibrance, Hue/Saturation and a dozen more, mask them to an area, reorder them, or turn them off, and your original pixels never change. 16 adjustment layers that also apply directly to pixels, including Curves with per-channel e",
+        "width": 912,
+        "height": 572,
+        "id": "asset-2",
+        "sceneId": "scene-7",
+        "sourceId": "source-1",
+        "pageUrl": "https://github.com/storytold/photocraft",
+        "quality": 0.8999999999999999,
+        "confidence": 0.8,
+        "canEnlarge": true,
+        "animated": false,
+        "localPath": "assets/asset-2.png",
+        "captureMethod": "element",
+        "isolated": true
+      }
+    ],
+    "directorRevision": 5,
+    "notes": [],
+    "captureMode": "desktop",
+    "captureRevision": 7,
+    "captureViewport": {
+      "width": 1080,
+      "height": 1920
+    },
+    "contentMode": "promotional",
+    "sourceUrl": "https://github.com/storytold/photocraft",
+    "sourceType": "githubRepo"
+  },
+  "transcript": {
+    "duration": 44.902375,
+    "segments": [
+      {
+        "visitId": "visit-1",
+        "text": "This is PhotoCraft \u2014 Adobe Photoshop reimplemented clean-room in pure Rust as an open-source image editor.",
+        "claimIds": [
+          "editorial-evidence-17"
+        ],
+        "id": "segment-1",
+        "sceneId": "scene-1",
+        "sectionId": "page-source-1-section-0",
+        "start": 0,
+        "end": 7.325
+      },
+      {
+        "visitId": "visit-2",
+        "text": "Work offline in a native app, combining layers and masks with text, brushes and vector shapes.",
+        "claimIds": [
+          "claim-1"
+        ],
+        "id": "segment-2",
+        "sceneId": "scene-1",
+        "sectionId": "page-source-1-section-0",
+        "start": 7.505,
+        "end": 13.805
+      },
+      {
+        "visitId": "visit-3",
+        "text": "It opens, edits and saves layered Photoshop documents. Re-saving preserved the appearance of 307 out of 309 psd-tools test files.",
+        "claimIds": [
+          "claim-4"
+        ],
+        "id": "segment-3",
+        "sceneId": "scene-4",
+        "sectionId": "page-source-1-section-3",
+        "start": 13.985,
+        "end": 25.24
+      },
+      {
+        "visitId": "visit-4",
+        "text": "Adjustments stay editable: stack Curves and Vibrance, limit them to one area, or turn them off without changing your original pixels.",
+        "claimIds": [
+          "claim-6"
+        ],
+        "id": "segment-4",
+        "sceneId": "scene-7",
+        "sectionId": "page-source-1-section-6",
+        "start": 25.42,
+        "end": 33.745
+      },
+      {
+        "visitId": "visit-5",
+        "text": "It's early alpha, so it isn't ready to replace Photoshop for daily professional work. The appeal is Photoshop-style editing in an open-source app that works offline.",
+        "claimIds": [
+          "claim-14"
+        ],
+        "takeawayClaimIds": [
+          "editorial-evidence-17",
+          "claim-1"
+        ],
+        "id": "segment-5",
+        "sceneId": "scene-25",
+        "sectionId": "page-source-1-section-24",
+        "start": 33.925,
+        "end": 44.905
+      }
+    ],
+    "words": [
+      {
+        "text": "This",
+        "start": 0.275,
+        "end": 0.45
+      },
+      {
+        "text": "is",
+        "start": 0.45,
+        "end": 0.625
+      },
+      {
+        "text": "PhotoCraft",
+        "start": 0.625,
+        "end": 1.6375
+      },
+      {
+        "text": "\u2014Adobe",
+        "start": 1.725,
+        "end": 2.125
+      },
+      {
+        "text": "Photoshop",
+        "start": 2.125,
+        "end": 2.825
+      },
+      {
+        "text": "reimplemented",
+        "start": 2.825,
+        "end": 3.5
+      },
+      {
+        "text": "clean-room",
+        "start": 3.5,
+        "end": 4.05
+      },
+      {
+        "text": "in",
+        "start": 4.05,
+        "end": 4.2125
+      },
+      {
+        "text": "pure",
+        "start": 4.2125,
+        "end": 4.5
+      },
+      {
+        "text": "Rust",
+        "start": 4.5,
+        "end": 5.15
+      },
+      {
+        "text": "as",
+        "start": 5.15,
+        "end": 5.2875
+      },
+      {
+        "text": "an",
+        "start": 5.2875,
+        "end": 5.4125
+      },
+      {
+        "text": "open-source",
+        "start": 5.4125,
+        "end": 6.075
+      },
+      {
+        "text": "image",
+        "start": 6.075,
+        "end": 6.4
+      },
+      {
+        "text": "editor.",
+        "start": 6.4,
+        "end": 7.075
+      },
+      {
+        "text": "Work",
+        "start": 7.78,
+        "end": 8.005
+      },
+      {
+        "text": "offline",
+        "start": 8.005,
+        "end": 8.4925
+      },
+      {
+        "text": "in",
+        "start": 8.4925,
+        "end": 8.5675
+      },
+      {
+        "text": "a",
+        "start": 8.5675,
+        "end": 8.63
+      },
+      {
+        "text": "native",
+        "start": 8.63,
+        "end": 8.93
+      },
+      {
+        "text": "app,",
+        "start": 8.93,
+        "end": 9.38
+      },
+      {
+        "text": "combining",
+        "start": 9.48,
+        "end": 9.98
+      },
+      {
+        "text": "layers",
+        "start": 9.98,
+        "end": 10.455
+      },
+      {
+        "text": "and",
+        "start": 10.455,
+        "end": 10.58
+      },
+      {
+        "text": "masks",
+        "start": 10.58,
+        "end": 11.0425
+      },
+      {
+        "text": "with",
+        "start": 11.0425,
+        "end": 11.2175
+      },
+      {
+        "text": "text,",
+        "start": 11.2175,
+        "end": 11.805
+      },
+      {
+        "text": "brushes",
+        "start": 11.9425,
+        "end": 12.43
+      },
+      {
+        "text": "and",
+        "start": 12.43,
+        "end": 12.555
+      },
+      {
+        "text": "vector",
+        "start": 12.555,
+        "end": 12.93
+      },
+      {
+        "text": "shapes.",
+        "start": 12.93,
+        "end": 13.555
+      },
+      {
+        "text": "It",
+        "start": 14.235,
+        "end": 14.36
+      },
+      {
+        "text": "opens,",
+        "start": 14.36,
+        "end": 14.985
+      },
+      {
+        "text": "edits",
+        "start": 15.085,
+        "end": 15.435
+      },
+      {
+        "text": "and",
+        "start": 15.435,
+        "end": 15.5725
+      },
+      {
+        "text": "saves",
+        "start": 15.5725,
+        "end": 15.9975
+      },
+      {
+        "text": "layered",
+        "start": 15.9975,
+        "end": 16.41
+      },
+      {
+        "text": "Photoshop",
+        "start": 16.41,
+        "end": 16.885
+      },
+      {
+        "text": "documents.",
+        "start": 16.885,
+        "end": 17.735
+      },
+      {
+        "text": "Re-saving",
+        "start": 18.465,
+        "end": 19.115
+      },
+      {
+        "text": "preserved",
+        "start": 19.115,
+        "end": 19.6275
+      },
+      {
+        "text": "the",
+        "start": 19.6275,
+        "end": 19.74
+      },
+      {
+        "text": "appearance",
+        "start": 19.74,
+        "end": 20.29
+      },
+      {
+        "text": "of",
+        "start": 20.29,
+        "end": 20.4275
+      },
+      {
+        "text": "307",
+        "start": 20.4275,
+        "end": 21.7525
+      },
+      {
+        "text": "out",
+        "start": 21.7525,
+        "end": 21.9775
+      },
+      {
+        "text": "of",
+        "start": 21.9775,
+        "end": 22.1025
+      },
+      {
+        "text": "309",
+        "start": 22.1025,
+        "end": 23.1275
+      },
+      {
+        "text": "psd-tools",
+        "start": 23.1275,
+        "end": 23.965
+      },
+      {
+        "text": "test",
+        "start": 23.965,
+        "end": 24.265
+      },
+      {
+        "text": "files.",
+        "start": 24.265,
+        "end": 24.99
+      },
+      {
+        "text": "Adjustments",
+        "start": 25.695,
+        "end": 26.27
+      },
+      {
+        "text": "stay",
+        "start": 26.27,
+        "end": 26.52
+      },
+      {
+        "text": "editable:",
+        "start": 26.52,
+        "end": 27.32
+      },
+      {
+        "text": "stack",
+        "start": 27.4575,
+        "end": 27.8075
+      },
+      {
+        "text": "Curves",
+        "start": 27.8075,
+        "end": 28.2325
+      },
+      {
+        "text": "and",
+        "start": 28.2325,
+        "end": 28.345
+      },
+      {
+        "text": "Vibrance,",
+        "start": 28.345,
+        "end": 29.045
+      },
+      {
+        "text": "limit",
+        "start": 29.1575,
+        "end": 29.4325
+      },
+      {
+        "text": "them",
+        "start": 29.4325,
+        "end": 29.62
+      },
+      {
+        "text": "to",
+        "start": 29.62,
+        "end": 29.745
+      },
+      {
+        "text": "one",
+        "start": 29.745,
+        "end": 29.97
+      },
+      {
+        "text": "area,",
+        "start": 29.97,
+        "end": 30.545
+      },
+      {
+        "text": "or",
+        "start": 30.645,
+        "end": 30.795
+      },
+      {
+        "text": "turn",
+        "start": 30.795,
+        "end": 30.9825
+      },
+      {
+        "text": "them",
+        "start": 30.9825,
+        "end": 31.12
+      },
+      {
+        "text": "off",
+        "start": 31.12,
+        "end": 31.3575
+      },
+      {
+        "text": "without",
+        "start": 31.3575,
+        "end": 31.7075
+      },
+      {
+        "text": "changing",
+        "start": 31.7075,
+        "end": 32.1325
+      },
+      {
+        "text": "your",
+        "start": 32.1325,
+        "end": 32.245
+      },
+      {
+        "text": "original",
+        "start": 32.245,
+        "end": 32.645
+      },
+      {
+        "text": "pixels.",
+        "start": 32.645,
+        "end": 33.495
+      },
+      {
+        "text": "It's",
+        "start": 34.175,
+        "end": 34.4
+      },
+      {
+        "text": "early",
+        "start": 34.4,
+        "end": 34.7875
+      },
+      {
+        "text": "alpha,",
+        "start": 34.7875,
+        "end": 35.475
+      },
+      {
+        "text": "so",
+        "start": 35.6375,
+        "end": 35.8
+      },
+      {
+        "text": "it",
+        "start": 35.8,
+        "end": 35.9
+      },
+      {
+        "text": "isn't",
+        "start": 35.9,
+        "end": 36.15
+      },
+      {
+        "text": "ready",
+        "start": 36.15,
+        "end": 36.375
+      },
+      {
+        "text": "to",
+        "start": 36.375,
+        "end": 36.475
+      },
+      {
+        "text": "replace",
+        "start": 36.475,
+        "end": 36.925
+      },
+      {
+        "text": "Photoshop",
+        "start": 36.925,
+        "end": 37.5
+      },
+      {
+        "text": "for",
+        "start": 37.5,
+        "end": 37.6625
+      },
+      {
+        "text": "daily",
+        "start": 37.6625,
+        "end": 38.075
+      },
+      {
+        "text": "professional",
+        "start": 38.075,
+        "end": 38.625
+      },
+      {
+        "text": "work.",
+        "start": 38.625,
+        "end": 39.2
+      },
+      {
+        "text": "The",
+        "start": 39.88,
+        "end": 40.005
+      },
+      {
+        "text": "appeal",
+        "start": 40.005,
+        "end": 40.405
+      },
+      {
+        "text": "is",
+        "start": 40.405,
+        "end": 40.5925
+      },
+      {
+        "text": "Photoshop-style",
+        "start": 40.5925,
+        "end": 41.405
+      },
+      {
+        "text": "editing",
+        "start": 41.405,
+        "end": 42.0925
+      },
+      {
+        "text": "in",
+        "start": 42.0925,
+        "end": 42.1925
+      },
+      {
+        "text": "an",
+        "start": 42.1925,
+        "end": 42.3175
+      },
+      {
+        "text": "open-source",
+        "start": 42.3175,
+        "end": 42.955
+      },
+      {
+        "text": "app",
+        "start": 42.955,
+        "end": 43.3425
+      },
+      {
+        "text": "that",
+        "start": 43.3425,
+        "end": 43.505
+      },
+      {
+        "text": "works",
+        "start": 43.505,
+        "end": 43.78
+      },
+      {
+        "text": "offline.",
+        "start": 43.78,
+        "end": 44.655
+      }
+    ],
+    "timingSource": "kokoro"
+  }
+}

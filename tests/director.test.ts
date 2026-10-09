@@ -25,7 +25,7 @@ test('director opens on the source page and preserves intentional narration slot
 test('visible scrolling is explicit, bounded and never consecutive', async () => {
   const { repairPlan, validatePlan } = await import('../src/pipeline/direct');
   const base = direct(transcript, inventory);
-  const repetitive = base.map(s => ({ ...s, walkthrough: undefined, assetId: 'scene-1', type: 'scroll_to' as const, framing: 'context' as const }));
+  const repetitive = base.map(s => ({ ...s, walkthrough: undefined, support:undefined, mediaMotion:undefined, cameraMode:'walkthrough' as const, assetId: 'scene-1', type: 'scroll_to' as const, framing: 'context' as const }));
   const broken = validatePlan(repetitive, inventory, transcript);
   assert.equal(broken.passed, false);
   assert.ok(broken.issues.some(i => i.code === 'consecutive-scroll'));
@@ -76,7 +76,6 @@ test('diagram relationships require cited quotes and narrated labels', async()=>
 test('word timestamps assign the actual spoken words to each visual slot', () => {
   const speech={...transcript,words:[{text:'Layers',start:.2,end:1},{text:'Masks',start:4.1,end:4.5},{text:'Controls',start:8.1,end:8.5},{text:'Export',start:12.1,end:13}]};
   const shots=direct(speech,inventory);
-  assert.equal(shots[0].narration,'Layers');
-  assert.equal(shots[1].narration,'Masks');
-  assert.equal(shots[2].narration,'Controls');
+  assert.equal(shots[0].narration,'Layers Masks Controls','The continuous first beat owns all words in its timed span');
+  assert.equal(shots[1].narration,'Export','Words from the next beat cannot leak into the first');
 });

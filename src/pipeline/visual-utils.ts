@@ -1,5 +1,5 @@
 import type { Inventory, VisualAsset } from '../lib/types';
-const words = (text: string) => new Set(text.toLowerCase().split(/\W+/).filter(w => w.length > 3));
+const words = (text: string) => new Set(text.toLowerCase().replace(/\blayered\b/g,'layers').replace(/\b(?:edit|edits|editor)\b/g,'editing').split(/\W+/).filter(w => w.length > 3));
 export function relevance(text: string, description: string) {
   const tokens = words(text); return [...words(description)].filter(w => tokens.has(w)).length;
 }

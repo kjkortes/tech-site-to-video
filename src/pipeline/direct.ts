@@ -8,11 +8,12 @@ import { z } from 'zod';
 import { Inventory, Shot, Transcript, Research, VisualAsset, FocusRegion, shotTypes, DiversityReport } from '../lib/types';
 import { modelEnabled, modelJson, creativeInstruction } from '../lib/llm';
 
-export const directorRevision = 5;
+export const directorRevision = 7;
 import { assetsFor, relevance } from './visual-utils';
 export { assetsFor, relevance } from './visual-utils';
 import { directWalkthrough, validateContinuity, localAsset } from './walkthrough';
 import { pagesFor } from './document-map';
+import { exitLocation, validatePageMotion } from './page-motion';
 import { validateCameraPlan } from './camera-policy';
 import { readableCodeRange } from './source-code';
 import { eligibleVisual, codeVisualsAllowed, promotionalPolicy } from './content-policy';
@@ -36,7 +37,7 @@ export async function visualDirector(transcript: Transcript, inventory: Inventor
         }
       }
       if (previews.length) notes.push(`Director inspected ${previews.length} attached source images: ${previews.map(p=>p.assetId).join(', ')}`);
-      const result = await modelJson('Direct a natural source walkthrough. Return {supports?:[{beatId,assetId,supportedText,claimIds,relevanceReason}],choices:[{shotId,assetId,type,purpose,rationale,motion,captionPosition,focus?,highlight?,cameraReason?,detailText?,codeRange?,diagram?}]}. Priorities in order: spatial continuity, narration relevance, readability, source evidence, pacing, variation. The first visual MUST be the source page: repository/README beginning for GitHub, homepage hero for websites, landing/title for documentation. Intro and browser visit order are locked. WALKTHROUGH is native portrait page scale with no artificial zoom. Use ESTABLISH, SCROLL to a destination in 0.5–1.5 seconds, PAUSE, optional MEDIA/DETAIL, RETURN to the same page section. MEDIA initially contains the full screenshot; landscape sources are fit-width, never cover cropped. Keep one source visible for its complete exact narration phrase. No random movement. DETAIL is optional only for an explicitly narrated small feature identified in an inspected image. Supply exact detailText from narration and cameraReason explaining what the viewer should inspect, plus focus in full normalized source coordinates. Detail pushes are at most 1.12x and brief; the app establishes wide before and returns wide afterward. Never crop a paragraph or assign zoom to every screenshot. Refine only supplied cutaway slots for the same asset. Static page/media views are acceptable. Promotional mode disables raw code, commands, JSON, CLI and generated code cards; show prose or actual UI instead. Captions stay bottom-center in their fixed safe zone. Preserve supported facts, word timestamps, full explanation dwell, exact browser return targets and real source media. Do not replace the ending page context merely for variety. Diagram edges require cited quotes and narrated labels', { policy:inventory.contentMode==='developer'||inventory.contentMode==='tutorial'?'Developer/tutorial source walkthrough':promotionalPolicy, research, attachedImages: previews.map((p,i)=>({ index:i+1,assetId:p.assetId })), narration: { segments: transcript.segments, words: transcript.words }, document: pagesFor(inventory), format: { width: 1080, height: 1920, fps: 30, safeArea:verticalSafeArea }, assets: assetsFor(inventory), slots: shots.filter(s=>['hook','cutaway','ending'].includes(s.walkthrough?.role||'')) }, choiceSchema, previews.map(p=>p.path), 'visual');
+      const result = await modelJson('Direct a natural source walkthrough. Return {supports?:[{beatId,assetId,supportedText,claimIds,relevanceReason}],choices:[{shotId,assetId,type,purpose,rationale,motion,captionPosition,focus?,highlight?,cameraReason?,detailText?,codeRange?,diagram?}]}. Priorities in order: spatial continuity, narration relevance, readability, source evidence, pacing, variation. The first visual MUST be the source page: repository/README beginning for GitHub, homepage hero for websites, landing/title for documentation. Intro and browser visit order are locked. WALKTHROUGH is native portrait page scale with no artificial zoom. Use ESTABLISH, SCROLL to a destination in 0.5–1.5 seconds, PAUSE, optional MEDIA/DETAIL, RETURN to the same page section. MEDIA initially contains the full screenshot; landscape sources are fit-width, never cover cropped. Keep one source visible for its complete exact narration phrase. No random movement. DETAIL is optional only for an explicitly narrated small feature identified in an inspected image. Supply exact detailText from narration and cameraReason explaining what the viewer should inspect, plus focus in full normalized source coordinates. Detail pushes are at most 1.12x and brief; the app establishes wide before and returns wide afterward. Never crop a paragraph or assign zoom to every screenshot. Refine only supplied cutaway slots for the same asset. Static page/media views are acceptable. Promotional mode disables raw code, commands, JSON, CLI and generated code cards; show prose or actual UI instead. Captions stay bottom-center in their fixed safe zone. Preserve supported facts, word timestamps, full explanation dwell, exact browser return targets and real source media. README establishes context; source product media owns the full relevant explanation. Preserve the planned hero ending and intentional hero reuse. Diagram edges require cited quotes and narrated labels', { policy:inventory.contentMode==='developer'||inventory.contentMode==='tutorial'?'Developer/tutorial source walkthrough':promotionalPolicy, research, attachedImages: previews.map((p,i)=>({ index:i+1,assetId:p.assetId })), narration: { segments: transcript.segments, words: transcript.words }, document: pagesFor(inventory), format: { width: 1080, height: 1920, fps: 30, safeArea:verticalSafeArea }, assets: assetsFor(inventory), slots: shots.filter(s=>['hook','cutaway','ending'].includes(s.walkthrough?.role||'')) }, choiceSchema, previews.map(p=>p.path), 'visual');
       const assets = assetsFor(inventory);
       const priorSlots=shots;
       if(result.supports?.length) {
@@ -71,6 +72,7 @@ export async function visualDirector(transcript: Transcript, inventory: Inventor
         if (index < 0 || !asset || !eligibleVisual(asset,inventory.contentMode) || seen.has(shots[index]?.id)) { notes.push(`Ignored unknown/duplicate choice ${choice.shotId}`); continue; }
         seen.add(shots[index].id);
         const base = shots[index];
+        if(base.walkthrough?.role==='ending' && !['developer','tutorial'].includes(inventory.contentMode||'promotional') && ['zoom_region','pan_media','highlight','diagram','code_focus'].includes(choice.type)){notes.push(`Ignored detail treatment on calm hero ending ${choice.shotId}`);continue;}
         if(base.walkthrough) {
           const section=pagesFor(inventory).flatMap(p=>p.sections).find(s=>s.id===base.walkthrough!.location.sectionId)!;
           if(!['hook','cutaway','ending'].includes(base.walkthrough.role) || base.walkthrough.role==='cutaway' && !localAsset(asset,section,inventory) || ['walkthrough','establish','scroll_to','feature_card'].includes(choice.type) || ['hook','ending'].includes(base.walkthrough.role) && !['image','gif','video','demo'].includes(asset.type)) {notes.push(`Ignored continuity-breaking choice ${choice.shotId}`);continue;}
@@ -123,13 +125,14 @@ export function repairPlan(input: Shot[], inventory: Inventory, transcript: Tran
     const mode=cameraMode(shot),beat=transcript.segments.find(b=>b.id===shot.segmentId);
     const explicit=mode==='detail' && shot.camera?.reason && shot.camera.detailText && beat?.text.includes(shot.camera.detailText) && (shot.camera.focus||shot.focus||shot.highlight);
     if(mode==='walkthrough') {
-      shot.cameraMode='walkthrough';shot.framing='context';shot.camera=undefined;shot.focus=undefined;shot.highlight=undefined;shot.motion='hold';
+      shot.mediaMotion=undefined;shot.cameraMode='walkthrough';shot.framing='context';shot.camera=undefined;shot.focus=undefined;shot.highlight=undefined;shot.motion='hold';
     } else if(!explicit) {
+      if(shot.walkthrough)shot.walkthrough={...shot.walkthrough,pageMotion:undefined};
       shot.cameraMode='media';shot.camera=undefined;shot.focus=undefined;shot.highlight=undefined;shot.motion='hold';
       if(['zoom_region','pan_media','highlight'].includes(shot.type||''))shot.type='media_fullscreen';
       if(shot.type!=='code_focus')shot.framing='product';
     } else {
-      shot.cameraMode='detail';shot.framing='detail';shot.motion='slow-push';
+      shot.mediaMotion=undefined;shot.cameraMode='detail';shot.framing='detail';shot.motion='slow-push';
       shot.camera={...shot.camera!,motion:'slow-push',offset:0,duration:shot.duration,maxZoom:Math.min(1.12,Math.max(1,shot.camera!.maxZoom??1.08))};
       // Expand a requested detail into context → short inspection → context,
       // preserving the exact asset, support span and narration timeline.
@@ -152,7 +155,7 @@ export function repairPlan(input: Shot[], inventory: Inventory, transcript: Tran
     shot.narration=transcript.words.filter(w=>(w.start+w.end)/2>=shot.start && (w.start+w.end)/2<shot.start+shot.duration).map(w=>w.text).join(' ')||transcript.segments.find(b=>b.id===shot.segmentId)?.text;
     if(shot.walkthrough) {
       shot.walkthrough={...shot.walkthrough,previousLocation:current,nextLocation:result.slice(i+1).find(s=>s.cameraMode==='walkthrough')?.walkthrough?.location};
-      if(shot.cameraMode==='walkthrough')current=shot.walkthrough.location;
+      if(shot.cameraMode==='walkthrough' || shot.sourceContext)current=exitLocation(shot);
     }
   }
   return result;
@@ -168,7 +171,7 @@ export function validatePlan(shots: Shot[], inventory: Inventory, transcript: Tr
   for (let i = 0; i < shots.length; i++) {
     const s = shots[i], previous = shots[i - 1]; const asset = assets.find(a => a.id === s.assetId);
     if (!Number.isFinite(s.start) || !Number.isFinite(s.duration) || s.duration <= 0 || Math.abs(s.start - (previous ? previous.start + previous.duration : 0)) > .02) add('timeline', 'Visual timeline has a gap/overlap or invalid duration', s.id);
-    if(s.duration>8 && !s.support)add('long-shot','Unsupported composition exceeds eight seconds',s.id,'warning');
+    if(s.duration>8 && !s.support && s.type!=='walkthrough')add('long-shot','Unsupported composition exceeds eight seconds',s.id,'warning');
     if (!asset || !s.type || !supportsType(asset, s.type)) add('asset', 'Missing asset or unsupported shot treatment', s.id);
     if (!s.purpose || !transcript.segments.some(b => b.id === s.segmentId)) add('support', 'Shot has no narrated beat or visual intent', s.id);
     const beat = transcript.segments.find(b => b.id === s.segmentId); const scene = inventory.scenes.find(c => c.id === beat?.sceneId);
@@ -184,19 +187,15 @@ export function validatePlan(shots: Shot[], inventory: Inventory, transcript: Tr
     if (s.focus && !validRegion(s.focus) || s.highlight && !validRegion(s.highlight)) add('focus', 'Focal coordinates exceed source bounds', s.id);
     if (s.type === 'scroll_to') { scrolling += s.duration; if (s.duration > 3) add('scroll-length', 'Visible scrolling exceeds three seconds', s.id); if (previous?.type === 'scroll_to') add('consecutive-scroll', 'Consecutive scrolling shots', s.id); }
     const composition = (shot: Shot) => JSON.stringify([shot.assetId,shot.framing,shot.type,shot.focus,shot.highlight,shot.codeRange,shot.diagram,shot.walkthrough?.location.selector,shot.walkthrough?.location.scrollY]);
-    if (previous && s.type !== 'walkthrough' && composition(previous) === composition(s)) add('repeated-framing', 'Repeated source with identical composition', s.id, 'warning');
-    let unchanged = s.duration;
-    for (let j = i - 1; j >= 0; j--) {
-      const p = shots[j];
-      if (composition(p) !== composition(s)) break;
-      unchanged += p.duration;
-    }
+    if (previous && s.type !== 'walkthrough' && !s.retention?.intentionalReuse && composition(previous) === composition(s)) add('repeated-framing', 'Repeated source with identical composition', s.id, 'warning');
     if (asset && ['image', 'gif'].includes(asset.type) && (asset.width < 480 || asset.height < 240)) add('resolution', 'Product image may be unreadable at delivery size', s.id, 'warning');
   }
   scrolling += shots.reduce((n,s)=>n+(s.walkthrough?.transition?.duration||0),0);
   if (scrolling > transcript.duration * .35 + .01) add('scroll-budget', 'Visible scrolling exceeds 35% of runtime');
   if (shots.some(s=>s.walkthrough)) {issues.push(...validateContinuity(shots,inventory,transcript).issues,...validateCoverage(shots,inventory,transcript).issues);}
   if (!shots.length || Math.abs(shots.at(-1)!.start + shots.at(-1)!.duration - transcript.duration) > .05) add('coverage', 'Shot plan does not cover narration');
+  const motion=validatePageMotion(shots,inventory,transcript);
+  issues.push(...motion.issues);scrolling+=shots.reduce((n,s)=>n+(s.walkthrough?.pageMotion?.motionDuration||0),0);
   issues.push(...validateCameraPlan(shots,inventory,transcript).issues);
   if (shots[0]?.type === 'scroll_to') add('hook', 'Opening shows generic navigation');
   const passed = !issues.some(i => i.severity === 'error');

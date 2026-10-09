@@ -1,22 +1,31 @@
 import path from 'node:path';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
-import { Inventory, Shot, ShotResult } from '../lib/types';
+import { Inventory, Shot, ShotResult, WalkLocation } from '../lib/types';
 import { jobDir, readArtifact, writeArtifact } from '../lib/store';
-import { launchBrowser, newContext, navigate, dismissConsent, perform, consentObscuresPage, captureMode, captureRevision, viewport, matchesCapture, positionAtSection, scrollToSection } from './browser';
+import { launchBrowser, newContext, navigate, dismissConsent, perform, consentObscuresPage, captureMode, captureRevision, viewport, matchesCapture, positionAtSection, scrollToSection, sectionScrollTarget, resolvePageMotion, animatePageMotion } from './browser';
 import { probe, run } from '../lib/process';
 import { createHash } from 'node:crypto';
 import { assetsFor } from './direct';
-import { renderCameraClip } from './camera';
+import { renderCameraClip, cameraRenderRevision } from './camera';
 import { generatedScene } from './generated-scenes';
 import { captureSourceCode } from './source-code';
+import { validatePageMotion, exitLocation } from './page-motion';
 import { codeVisualsAllowed, promotionalCaptureCSS } from './content-policy';
 
-export function shotSignature(shot: Shot) { return createHash('sha256').update(JSON.stringify(shot)).digest('hex'); }
+export function shotSignature(shot: Shot) { return createHash('sha256').update(JSON.stringify(shot)).update(shot.mediaMotion?`|camera:${cameraRenderRevision}`:'').digest('hex'); }
 
 export async function recordShots(id: string, shots: Shot[], inventory: Inventory, onProgress: (detail: string) => Promise<void>): Promise<ShotResult[]> {
   if(shots.some(s=>s.type==='code_focus' || assetsFor(inventory).find(a=>a.id===s.assetId)?.type==='code') && !codeVisualsAllowed(inventory.contentMode))throw new Error('Promotional capture rejects code visuals');
+  const motionQA=validatePageMotion(shots,inventory,{duration:shots.at(-1)?shots.at(-1)!.start+shots.at(-1)!.duration:0,segments:[],words:[],timingSource:'capture'});
+  if(!motionQA.passed)throw new Error(`Invalid page motion: ${motionQA.issues.filter(i=>i.severity==='error').map(i=>i.detail).join('; ')}`);
   const dir = jobDir(id); const clips = path.join(dir, 'clips'); await mkdir(clips, { recursive: true });
   const saved = await readArtifact<ShotResult[]>(id, 'recordings.json').catch(() => []);
+  let endpoint:{planned:WalkLocation;actual:WalkLocation}|undefined;
+  const adoptEndpoint=(shot:Shot,result:ShotResult)=>{
+    if(shot.type!=='walkthrough')return;
+    const planned=exitLocation(shot);
+    if(planned)endpoint={planned,actual:result.endLocation||planned};
+  };
   const results: ShotResult[] = []; const browser = await launchBrowser();
   try {
     for (const shot of shots) {
@@ -25,7 +34,7 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
       const previous = saved.find(r => r.id === shot.id && r.signature === signature);
       if (previous && matchesCapture(previous) && await stat(path.join(dir, previous.clip)).then(s => s.size > 0).catch(() => false)) {
         const info = await probe(path.join(dir, previous.clip)).catch(() => null);
-        if (info && Number(info.format.duration) >= previous.trimStart + shot.duration - 0.2) { results.push(previous); continue; }
+        if (info && Number(info.format.duration) >= previous.trimStart + shot.duration - 0.2) { results.push(previous);adoptEndpoint(shot,previous); continue; }
       }
       let result: ShotResult | undefined; let lastError = '';
       const assetShot = shot.type && !['walkthrough', 'establish', 'scroll_to', 'click_demo'].includes(shot.type);
@@ -86,21 +95,29 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
           await onProgress(`Recording shot ${Number(shot.id)} of ${shots.length}${attempt > 1 ? ' · retrying' : ''}`);
           const context = await newContext(browser, clips,inventory.contentMode); const page = await context.newPage(); const video = page.video();
           try {
+            const rebase=(location:WalkLocation)=>endpoint && location.pageId===endpoint.planned.pageId && location.sectionId===endpoint.planned.sectionId && location.selector===endpoint.planned.selector && Math.abs(location.scrollY-endpoint.planned.scrollY)<.01?endpoint.actual:location;
+            const walk=shot.walkthrough?{...shot.walkthrough,location:rebase(shot.walkthrough.location),transition:shot.walkthrough.transition?{...shot.walkthrough.transition,from:rebase(shot.walkthrough.transition.from)}:undefined}:undefined;
+            const capturedShot={...shot,walkthrough:walk};
             const opened = Date.now();
             await navigate(page, shot.url); await dismissConsent(page);
             if(!codeVisualsAllowed(inventory.contentMode))await page.addStyleTag({content:promotionalCaptureCSS});
             const liveClick = shot.type === 'click_demo' ? shot.actions.findLast(a => a.type === 'click') : undefined;
             for (const action of shot.actions) if (action !== liveClick) await perform(page, action);
-            if(shot.type==='walkthrough' && shot.walkthrough) await positionAtSection(page,shot.walkthrough.transition?.from||shot.walkthrough.location);
+            if(shot.type==='walkthrough' && walk) await positionAtSection(page,walk.transition?.from||walk.location);
+            const pageMotion=await resolvePageMotion(page,capturedShot,inventory);
             await page.waitForTimeout(600);
             const trimStart = (Date.now() - opened) / 1000;
             const pageTitle = await page.title();
             const consentObscured = await consentObscuresPage(page);
             if (consentObscured) throw new Error('Consent dialog obscures the source');
             if (liveClick) await perform(page, liveClick);
-            if(shot.type==='walkthrough' && shot.walkthrough?.transition) {
-              await scrollToSection(page,shot.walkthrough.location,shot.walkthrough.transition.duration);
-              await page.waitForTimeout(Math.max(0,shot.duration-shot.walkthrough.transition.duration+.7)*1000);
+            let motionSamples:{time:number;y:number}[]|undefined;
+            if(shot.type==='walkthrough' && walk) {
+              const navigation=walk.transition?.duration||0;
+              if(walk.transition)await scrollToSection(page,walk.location,navigation);
+              if(pageMotion)motionSamples=await animatePageMotion(page,pageMotion,navigation);
+              else await page.waitForTimeout(Math.max(0,shot.duration-navigation)*1000);
+              await page.waitForTimeout(700);
             } else if (shot.type === 'scroll_to') {
               const startY = await page.evaluate(() => scrollY);
               const travel = await page.evaluate(() => Math.max(0, Math.min(300, document.documentElement.scrollHeight - innerHeight - scrollY)));
@@ -108,6 +125,11 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
               for (let tick = 0; tick < ticks; tick++) { await page.evaluate(y => scrollTo(0, y), startY + travel * tick / ticks); await page.waitForTimeout(1000 / 30); }
               await page.waitForTimeout(700);
             } else await page.waitForTimeout((shot.duration + .7) * 1000);
+            let endLocation:WalkLocation|undefined;
+            if(shot.type==='walkthrough' && walk) {
+              const actualY=await page.evaluate(()=>scrollY),baseY=await sectionScrollTarget(page,{...walk.location,offsetY:0});
+              endLocation={...walk.location,scrollY:actualY,offsetY:actualY-baseY};
+            }
             await context.close();
             const clip = `clips/${shot.id}.webm`;
             if (!video) throw new Error('Browser recording was not created');
@@ -119,7 +141,7 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
               outputClip = `clips/${shot.id}-camera.mp4`;
               await renderCameraClip(path.join(dir,clip),path.join(dir,outputClip),shot,true,trimStart,asset,shot.contextPreview?path.join(dir,shot.contextPreview):undefined);
             }
-            result = { id: shot.id, signature, rawClip: clip, rawTrimStart: trimStart, kind: 'browser', consentObscured: false, clip: outputClip, trimStart: outputClip === clip ? trimStart : 0, duration: shot.duration, attempts: attempt, fallback: false, pageTitle, captureMode, captureRevision, captureViewport: { ...viewport } };
+            result = { id: shot.id, signature, rawClip: clip, rawTrimStart: trimStart, kind: 'browser', endLocation, pageMotion:pageMotion?{plan:pageMotion,samples:motionSamples||[]}:undefined, motionFallback:shot.walkthrough?.pageMotion && !pageMotion?'Live section has no safe scroll corridor; held the approved view':undefined, consentObscured: false, clip: outputClip, trimStart: outputClip === clip ? trimStart : 0, duration: shot.duration, attempts: attempt, fallback: false, pageTitle, captureMode, captureRevision, captureViewport: { ...viewport } };
             break;
           } catch (error) {
             await context.close().catch(() => {}); await video?.delete().catch(() => {});
@@ -137,7 +159,7 @@ export async function recordShots(id: string, shots: Shot[], inventory: Inventor
         await renderCameraClip(path.join(dir, scene.screenshot), path.join(dir, clip), { ...shot, highlight: undefined, focus: undefined, motion: 'slow-push' });
         result = { id: shot.id, signature, kind: 'asset', fallbackReason: lastError, clip, trimStart: 0, duration: shot.duration, attempts: 2, fallback: true, pageTitle: scene.title, captureMode, captureRevision, captureViewport: { ...viewport } };
       }
-      results.push(result);
+      results.push(result);adoptEndpoint(shot,result);
       // Save every shot immediately so process death never discards successful recording work.
       await writeArtifact(id, 'recordings.json', [...results, ...saved.filter(r => !results.some(v => v.id === r.id))]);
     }

@@ -141,6 +141,7 @@ export async function runPipeline(id: string) {
       await saveJob(job);
       const shots = await stage<Shot[]>('DIRECTING', 'shot-plan.json', async () => {
         const plan = await visualDirector(speech, inventory, facts, id);
+        await writeArtifact(id,'inventory.json',inventory);
         await writeArtifact(id, 'director-report.json', { ...plan.diagnostics, notes: plan.notes, directorRevision });
         for (const note of plan.notes) event(job, note.slice(0,250));
         return plan.shots;

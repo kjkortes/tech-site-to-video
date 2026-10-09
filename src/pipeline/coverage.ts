@@ -16,8 +16,9 @@ export function defaultSupport(beat:Transcript['segments'][number],asset:VisualA
   if(relevance(beat.text,`${asset.description} ${asset.features.join(' ')} ${asset.text||''}`)===0)return;
   // Introductory connective wording belongs on the README; keep the full dependent explanation after it.
   const connector=/^(?:For [^,]{1,45},|On [^,]{1,45},|When [^,]{1,45},|From there,|For the next step,|But [^,]{1,45},|Under the hood,|The interesting part is[^:]{0,35}:)\s*/i.exec(beat.text);
-  const introSentence=!connector?beat.text.match(/^([^.!?]+[.!?])\s+(.+)$/):null;
-  const supportedText=connector?beat.text.slice(connector[0].length):introSentence && introSentence[1].split(/\s+/).length<=8?introSentence[2]:beat.text;
+  const label=!connector?/^[^,:.!?]{1,45}:\s*/.exec(beat.text):null;
+  const introSentence=!connector && !label?beat.text.match(/^([^.!?]+[.!?])\s+(.+)$/):null;
+  const supportedText=connector?beat.text.slice(connector[0].length):label?beat.text.slice(label[0].length):introSentence && introSentence[1].split(/\s+/).length<=8?introSentence[2]:beat.text;
   return {beatId:beat.id,assetId:asset.id,supportedText,claimIds:beat.claimIds,relevanceReason:`Source ${asset.type} from this section demonstrates ${asset.features.filter(f=>relevance(supportedText,f)>0).join(', ')||asset.description.slice(0,160)}; full source media is clearer than the page thumbnail.`};
 }
 export function supportFor(transcript:Transcript,beat:Transcript['segments'][number],asset:VisualAsset,request:SupportRequest,slotStart:number,slotEnd:number):VisualSupport {

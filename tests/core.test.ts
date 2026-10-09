@@ -54,7 +54,8 @@ test('GitHub context-only inventories retain source identity and bounded narrati
   const shots = direct(transcript, scenes);
   assert.equal(shots[0].sceneId, overview.id, 'Intro establishes the source beginning before entering the narrated section');
   assert.deepEqual(shots[0].actions, []);
-  assert.ok(shots.every(s=>s.duration <= 4.5));
+  assert.ok(shots.every(s=>s.start+s.duration<=20),'Continuous beats stay inside the approved narration timeline');
+  assert.equal(shots.filter(s=>s.segmentId==='seg-2').length,1,'A long contextual beat keeps one continuous source');
   assert.ok(shots.some(s=>s.sceneId === feature.id));
   assert.ok(shots.every(s=>s.sceneId !== otherOverview.id));
   assert.equal(shots.at(-1)!.start + shots.at(-1)!.duration, 20);

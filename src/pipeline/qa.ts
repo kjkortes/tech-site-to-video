@@ -16,6 +16,7 @@ import { cameraSummary, validateCameraPlan } from './camera-policy';
 
 import { validatePlan, captionIntersectsFocus } from './direct';
 import { validateContinuity } from './walkthrough';
+import { validatePageMotion } from './page-motion';
 import { shotSignature } from './record';
 import { panelFor } from './video-layout';
 
@@ -38,6 +39,16 @@ export async function checkVideo(id: string, research: Research, inventory: Inve
   add('audio', 'Narration track', !!audio, audio ? `Audio encoded as ${audio.codec_name}` : 'No audio stream found');
   add('delivery', '30fps and AAC 48kHz delivery', video?.avg_frame_rate === '30/1' && audio?.codec_name === 'aac' && audio?.sample_rate === '48000', `${video?.avg_frame_rate}fps / ${audio?.codec_name} ${audio?.sample_rate}Hz`);
   const diversity = validatePlan(shots, inventory, transcript);
+  const motion=validatePageMotion(shots,inventory,transcript);
+  add('static-dwell','Long contextual page dwell',!motion.issues.some(i=>i.code==='static-dwell'),motion.issues.filter(i=>i.code==='static-dwell').map(i=>i.detail).join('; ')||'Long page beats drift when relevant space permits; media and ending holds remain readable','warning');
+  add('motion-budget','Purposeful page motion budget',motion.passed,motion.issues.filter(i=>i.code!=='static-dwell').map(i=>i.detail).join('; ')||`${motion.scrollDuration.toFixed(1)}s section-bounded motion with establishment and settle holds`);
+  add('motion-rhythm','Page movement rhythm',!motion.issues.some(i=>['motion-budget-review','consecutive-page-motion','scroll-continuous'].includes(i.code)),motion.issues.filter(i=>['motion-budget-review','consecutive-page-motion','scroll-continuous'].includes(i.code)).map(i=>i.detail).join('; ')||'Movement alternates with stillness','warning');
+  const executedMotion=shots.every(s=>!s.walkthrough?.pageMotion || recordings.some(r=>r.id===s.id && (r.pageMotion || r.motionFallback))) && recordings.every(r=>{
+    const m=r.pageMotion;if(!m)return true;
+    return m.samples.length>2 && Math.abs(m.samples.at(-1)!.y-m.plan.endY)<2 && m.samples.every((s,i)=>s.y>=m.plan.minY-2 && s.y<=m.plan.maxY+2 && (!i || s.time>m.samples[i-1].time && s.y>=m.samples[i-1].y-1 && s.y-m.samples[i-1].y<=80*(s.time-m.samples[i-1].time)+2));
+  });
+  add('motion-execution','Recorded page drift',executedMotion,'Captured scroll samples reach their endpoint, stay forward inside the live corridor, and avoid abrupt or fast steps');
+  add('motion-fallback','Live scroll space',!recordings.some(r=>r.motionFallback),recordings.filter(r=>r.motionFallback).map(r=>`${r.id}: ${r.motionFallback}`).join('; ')||'Planned page movement has a verified live corridor','warning');
   const coverage=validateCoverage(shots,inventory,transcript,research),retention=validateRetention(shots,inventory,transcript,script);
   add('visual-coverage','Narration-supported visual coverage',coverage.passed,`${coverage.groups.length} explicit source/phrase groups. ${coverage.issues.map(i=>i.detail).join('; ')}`);
   add('readability','Cutaway inspection time',!coverage.issues.some(i=>i.code==='readability-time'||i.code==='short-payoff'),coverage.issues.filter(i=>i.severity==='warning').map(i=>i.detail).join('; ')||'Sources remain visible for full phrases and readable inspection time','warning');
@@ -64,7 +75,7 @@ export async function checkVideo(id: string, research: Research, inventory: Inve
   let freezeCount = 0;
   for (const recording of recordings) {
     const scan = await run('ffmpeg', ['-hide_banner', '-ss', String(recording.trimStart), '-t', String(recording.duration), '-i', path.join(jobDir(id), recording.clip), '-vf', 'freezedetect=n=-55dB:d=5.5', '-an', '-f', 'null', '-']);
-    if (/freeze_start:/.test(scan) && (recordings.find(r=>r.id===recording.id)?.kind==='browser' && shots.find(s=>s.id===recording.id)?.walkthrough?.transition || shots.find(s=>s.id===recording.id)?.cameraMode==='detail')) freezeCount++;
+    if (/freeze_start:/.test(scan) && (recordings.find(r=>r.id===recording.id)?.kind==='browser' && shots.find(s=>s.id===recording.id)?.walkthrough?.transition || recordings.find(r=>r.id===recording.id)?.pageMotion || shots.find(s=>s.id===recording.id)?.cameraMode==='detail')) freezeCount++;
     const clip = await probe(path.join(jobDir(id), recording.clip));
     add(`clip-${recording.id}`, `Shot ${Number(recording.id)} coverage`, Number(clip.format.duration) + 0.2 >= recording.trimStart + recording.duration, `Saved clip covers its ${recording.duration.toFixed(1)}s narration segment`);
   }
