@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm, stat, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
@@ -93,6 +93,49 @@ process.stdin.on('end', () => {
     Object.assign(config, saved); globalThis.fetch = originalFetch;
     for (const key of Object.keys(process.env)) if (!(key in oldEnv)) delete process.env[key];
     Object.assign(process.env, oldEnv); await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('Codex requests recover a removed extension path and discover later upgrades without a restart', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'codex-extension-upgrade-'));
+  const saved = config.codexBin, savedPath = process.env.PATH;
+  const bundle = process.platform === 'win32' ? 'windows-x86_64' : `${process.platform === 'darwin' ? 'macos' : 'linux'}-${process.arch === 'arm64' ? 'aarch64' : 'x86_64'}`;
+  const executable = (version: string) => path.join(directory, 'extensions', `openai.chatgpt-${version}`, 'bin', bundle, 'codex');
+  async function install(version: string) {
+    const file = executable(version);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, `#!${process.execPath}
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+if (args.includes('login')) { console.error('Logged in using ChatGPT'); process.exit(0); }
+if (!args.includes('exec')) process.exit(2);
+process.stdin.resume(); process.stdin.on('end', () => {
+  fs.writeFileSync(args[args.indexOf('--output-last-message') + 1], JSON.stringify({answer: '${version}'}));
+});
+`, { mode: 0o700 });
+    return file;
+  }
+  try {
+    // The configured bundle was removed by an extension update. Its replacement
+    // is not on the worker's restricted PATH.
+    process.env.PATH = directory;
+    config.codexBin = executable('26.9.1');
+    await install('26.9.9');
+    const latest = await install('26.10.1');
+    // Recovery of an explicit extension choice should stay with that extension,
+    // even when an unrelated installation is on PATH (including CI machines).
+    await writeFile(path.join(directory, process.platform === 'win32' ? 'codex.exe' : 'codex'), `#!${process.execPath}\nprocess.exit(1);\n`, { mode: 0o700 });
+    await withModelSettings({ provider: 'codex', model: '', effort: 'default', creativity: 'balanced' }, async () => {
+      assert.equal((await checkCodexLogin()).ok, true, 'A removed bundle path must resolve to the installed replacement');
+      assert.deepEqual(await modelJson('Check', {}, z.object({ answer: z.string() })), { answer: '26.10.1' });
+      await rm(path.dirname(path.dirname(path.dirname(latest))), { recursive: true });
+      await install('26.11.1');
+      assert.deepEqual(await modelJson('Check again', {}, z.object({ answer: z.string() })), { answer: '26.11.1' });
+    });
+  } finally {
+    config.codexBin = saved;
+    if (savedPath === undefined) delete process.env.PATH; else process.env.PATH = savedPath;
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

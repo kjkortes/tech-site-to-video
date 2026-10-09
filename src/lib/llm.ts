@@ -7,6 +7,7 @@ import path from 'node:path';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { ModelSettings } from './model-options';
 import { configuredModelProvider, environmentModelDefaults } from './model-settings';
+import { resolveCodexExecutable } from './codex-executable';
 
 const modelContext = new AsyncLocalStorage<ModelSettings>();
 export const withModelSettings = <T>(settings: ModelSettings, work: () => T): T => modelContext.run(settings, work);
@@ -45,8 +46,20 @@ function codexEnvironment() {
   return env;
 }
 async function codexProcess(args: string[], input: string, timeout: number, cwd?: string) {
+  const executable = await resolveCodexExecutable(config.codexBin);
+  try { return await runCodex(executable, args, input, timeout, cwd); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    // An extension can update between discovery and spawn. Retry only a failed
+    // launch, never an already-running model request or an authentication error.
+    const replacement = await resolveCodexExecutable(config.codexBin);
+    if (replacement !== executable) return runCodex(replacement, args, input, timeout, cwd);
+    throw new Error(`Cannot start Codex at ${executable}. Its executable or runtime is missing.`);
+  }
+}
+async function runCodex(executable: string, args: string[], input: string, timeout: number, cwd?: string) {
   return new Promise<string>((resolve, reject) => {
-    const child = spawn(config.codexBin, ['--no-daemon', ...args], {
+    const child = spawn(executable, ['--no-daemon', ...args], {
       cwd, env: codexEnvironment(), stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32',
     });
     let stdout = '', stderr = ''; let timedOut = false;
@@ -61,7 +74,7 @@ async function codexProcess(args: string[], input: string, timeout: number, cwd?
     child.stdin.on('error', () => { /* Early CLI exits are reported by close/error. */ });
     child.once('error', error => {
       clearTimeout(timer);
-      reject(new Error((error as NodeJS.ErrnoException).code === 'ENOENT' ? 'Codex CLI was not found. Install it or set CODEX_BIN to its executable path.' : `Cannot start Codex: ${error.message}`));
+      reject(error);
     });
     child.once('close', code => {
       clearTimeout(timer);
