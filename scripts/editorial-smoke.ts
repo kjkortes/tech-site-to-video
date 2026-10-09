@@ -25,7 +25,7 @@ for(const source of sources) {
  for(const file of ['research.json','inventory.json','assets','exploration'])await cp(path.join(source,file),path.join(jobDir(job.id),file),{recursive:true});
  const inventory=await readArtifact<Inventory>(job.id,'inventory.json');Object.assign(inventory,{captureMode,captureRevision,captureViewport:viewport,directorRevision,mapRevision});await writeArtifact(job.id,'inventory.json',inventory);
  await writeArtifact(job.id,'script-versions/1.json',old);await writeArtifact(job.id,'script-history.json',{latest:1});
- job.scriptFeedback=process.env.EDITORIAL_FEEDBACK||'You missed the point. Focus on the project’s main purpose and strongest compatibility/workflow evidence. De-emphasize secondary automation.';
+ job.scriptFeedback=process.env.EDITORIAL_FEEDBACK||'Establish the broad product experience before scoped proof, deepen one useful capability, then the main caveat and a takeaway about the whole product. Optional differentiation should earn its runtime.';
  await saveJob(job);console.log(`Generating ${old.title} in isolated job ${job.id}`);
  await runPipeline(job.id);
  const done=(await getJob(job.id))!;assert.equal(done.status,'SCRIPT_REVIEW',done.error);
@@ -33,13 +33,14 @@ for(const source of sources) {
  const script=await readArtifact<Script>(job.id,'script.json'),research=await readArtifact<Research>(job.id,'research.json');
  assert.ok(research.editorial);assert.ok(script.quality);assert.ok(script.quality.dimensions!.thesisFidelity>=4,JSON.stringify(script.quality));
  assert.ok(script.quality.dimensions!.audienceValue>=4,JSON.stringify(script.quality));
+ assert.ok(script.quality.dimensions!.productBreadth>=4,JSON.stringify(script.quality));
  assert.ok(script.segments.flatMap(s=>s.claimIds).every(id=>promotionalClaim(research.editorial!.claims.find(c=>c.claimId===id)!)),'Promotional facts must earn audience runtime');
- assert.equal(script.quality.issues.some(i=>['audience-value','audience-proof','technical-density','weak-takeaway'].includes(i.code)),false,JSON.stringify(script.quality.issues));
+ assert.equal(script.quality.issues.some(i=>['audience-value','audience-proof','technical-density','weak-takeaway','product-breadth','proof-before-experience','repetitive-takeaway'].includes(i.code)),false,JSON.stringify(script.quality.issues));
  assert.ok(script.segments.length<=5);
  if(research.editorial.claims.some(c=>c.category==='CAVEAT' && c.thesisContribution>=3))assert.ok(script.outline!.visits.some(v=>v.storyRole==='caveat'),'Important caveat must remain narratable');assert.equal(script.outline!.visits.some(v=>v.storyRole==='surprise'),false);
  console.log(JSON.stringify({title:script.title,script:script.text,words:wordCount(script.text!),dimensions:script.quality.dimensions,status:script.quality.status,visits:script.outline!.visits.map(v=>v.purpose)},null,2));
  comparisons.push({jobId:job.id,title:script.title,old:old.text||old.segments.map(s=>s.text).join('\n\n'),new:script.text,editorial:research.editorial,quality:script.quality});
 }
 await writeFile(path.join(config.dataDir,'comparison.json'),JSON.stringify(comparisons,null,2));
-await writeFile(path.join(config.dataDir,'comparison.md'),comparisons.map(c=>`# ${c.title}\n\n## Old VO\n\n${c.old}\n\n## New VO\n\n${c.new}\n\nThesis fidelity: ${c.quality!.dimensions!.thesisFidelity}/5. Audience value: ${c.quality!.dimensions!.audienceValue}/5. Job: ${c.jobId}. Stopped at SCRIPT_REVIEW.\n`).join('\n'));
+await writeFile(path.join(config.dataDir,'comparison.md'),comparisons.map(c=>`# ${c.title}\n\n## Old VO\n\n${c.old}\n\n## New VO\n\n${c.new}\n\nThesis fidelity: ${c.quality!.dimensions!.thesisFidelity}/5. Audience value: ${c.quality!.dimensions!.audienceValue}/5. Product breadth: ${c.quality!.dimensions!.productBreadth}/5. Job: ${c.jobId}. Stopped at SCRIPT_REVIEW.\n`).join('\n'));
 console.log(`PASS: audience-valued thesis-led VO and human review gate. ${path.join(config.dataDir,'comparison.md')}`);

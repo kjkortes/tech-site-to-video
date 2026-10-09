@@ -1,7 +1,8 @@
 import type {Script,Inventory,StoryOutline} from '../lib/types';
 import {isCore} from './editorial';
 import {promotionalClaim,technicalLanguage,engineeringValidation,fallbackAudience,audienceValue} from './audience-value';
-export const qualityDimensions=['hook','clarity','progression','visualSupport','differentiation','speech','density','thesisFidelity','audienceValue'] as const;
+import {facetCoverage,implementationProof,experienceWords} from './product-experience';
+export const qualityDimensions=['hook','clarity','progression','visualSupport','differentiation','speech','density','thesisFidelity','audienceValue','productBreadth'] as const;
 export type QualityDimension=typeof qualityDimensions[number];
 export interface ScriptQualityIssue {code:string;detail:string;}
 export interface ScriptQualityReport {
@@ -11,7 +12,7 @@ export interface ScriptQualityReport {
   model?:{provider:string;model:string;effort:string;creativity:string};
   inspectedAssetIds:string[];feedback?:string;
 }
-export const scriptWritingRevision=3;
+export const scriptWritingRevision=4;
 export const wordCount=(text:string)=>(text.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)||[]).length;
 export function productOpening(text:string,title?:string) {
   const name=title?title.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'):'[^,—–:]+?';
@@ -51,7 +52,21 @@ export function inspectScriptQuality(script:Script,inventory:Inventory,outline:S
     if(brief.claims.some(c=>isCore(c.category)) && (!coreBody.length || coreBody.length<body.length/2))add('thesis-fidelity','The opening identifies the project, but most body beats do not prove its thesis. Restore core workflow/compatibility/architecture evidence; cut generic details or secondary differentiation that hijacks the story.');
     const used=new Set(script.segments.flatMap(s=>s.claimIds));
     if(promotional) {
-      if(outline.preferredProofClaimIds?.length && (outline.preferredProofClaimIds.some(id=>!used.has(id)) || !/\b\d+ of (?:the )?\d+\b/i.test(text)))add('audience-proof','Selected numeric capability proof has high audience value. Use its scoped result before spending runtime on optional differentiators or generic feature summaries; do not add technical micro-caveats.');
+      const reserved=new Set(outline.visits.filter(v=>v.storyRole==='core-experience').flatMap(v=>v.claimIds));
+      const availableBroad=brief.claims.filter(c=>c.experienceScope==='broad'&&c.experienceFacets.length>=3&&promotionalClaim(c));
+      const reservedBroad=availableBroad.filter(c=>reserved.has(c.claimId));
+      const broad=reservedBroad.length?reservedBroad:availableBroad;
+      const experienceIndex=sentences.findIndex(sentence=>broad.some(c=>facetCoverage(sentence,c.experienceFacets)>=3));
+      if(broad.length && experienceIndex<0)add('product-breadth','The source supports a broad product experience, but the VO reduces it to narrow capabilities or proof. Group a few distinct user-facing capabilities before depth; merely citing overview evidence does not establish spoken breadth.');
+      const proofIndex=sentences.findIndex(sentence=>implementationProof.test(sentence));
+      if(broad.length && proofIndex>=0 && (experienceIndex<0||proofIndex<experienceIndex))add('proof-before-experience','Establish what users can broadly do before the numeric/test evidence. A strong metric is a payoff for a capability, not a substitute for the product experience.');
+      const final=script.segments.at(-1);
+      if(final?.takeawayClaimIds?.length){
+        const repeatedProof=final.takeawayClaimIds.filter(id=>{const rank=ranks.get(id);return (rank?.category==='CORE_PROOF'||rank?.category==='CORE_EXPERIENCE'&&rank.experienceScope==='focused')&&script.segments.slice(0,-1).some(s=>s.claimIds.includes(id));});
+        const identityWords=new Set(experienceWords(brief.productIdentity.text.split(/(?<=[.!?])\s+/)[0]));
+        if(repeatedProof.some(id=>{const point=[...brief.strongestProof,...brief.coreCapabilities].find(p=>p.claimIds.includes(id));return point&&experienceWords(point.text).filter(w=>!identityWords.has(w)&&experienceWords(final.text).includes(w)).length>=2;}))add('repetitive-takeaway','The ending repeats a narrow proof/capability already explained. Keep the caveat and synthesize the significance of the whole product, rather than repeating its metric or file support.');
+      }
+      if(outline.preferredProofClaimIds?.length && (outline.preferredProofClaimIds.some(id=>!used.has(id)) || !/\b\d+ of (?:the )?\d+\b/i.test(text)))add('audience-proof','Selected numeric capability proof has high audience value. Establish broad experience first, then use its scoped result before optional differentiators; do not add technical micro-caveats.');
       if(brief.claims.some(c=>used.has(c.claimId)&&c.audience&&!promotionalClaim(c)))add('audience-value','The draft cites low-audience-value evidence excluded from promotional selection. Cut the validation/technical nuance unless its explicit practical consequence earns runtime.');
       const caveats=brief.claims.filter(c=>used.has(c.claimId)&&c.category==='CAVEAT'&&c.audience?.caveatImpact!=='technical-nuance');
       if(caveats.filter(c=>!c.audience?.essentialForAudience).length>1)add('caveat-stack','Prefer one main practical caveat; additional limits need a material effect on the viewer’s decision.');

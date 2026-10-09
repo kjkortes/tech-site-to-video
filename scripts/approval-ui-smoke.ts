@@ -5,7 +5,7 @@ import type {Job,Script} from '../src/lib/types';
 const browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1440,height:1100}});const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
 let job:Job={id:'11111111-1111-1111-1111-111111111111',url:'https://github.com/storytold/photocraft',title:'PhotoCraft',status:'SCRIPT_REVIEW',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),revision:1,completed:['RESEARCHING','EXPLORING','SCRIPTING'],progress:.3,detail:'Review script',events:[]};
 let script:Script={title:'PhotoCraft',mode:'extractive',text:'This is PhotoCraft, an open-source image editor.',segments:[{id:'seg1',sceneId:'scene1',text:'This is PhotoCraft, an open-source image editor.',claimIds:[]}],review:{version:1,source:'generated',state:'generated',createdAt:new Date().toISOString(),hash:'fixture'}};
-script.quality={revision:1,status:'checked',selectedCandidate:'internal-winner',wordCount:9,revised:true,dimensions:{hook:4,clarity:5,progression:4,visualSupport:4,differentiation:4,speech:5,density:4,thesisFidelity:4,audienceValue:4},issues:[],notes:[],candidates:[],inspectedAssetIds:[]};
+script.quality={revision:1,status:'checked',selectedCandidate:'internal-winner',wordCount:9,revised:true,dimensions:{hook:4,clarity:5,progression:4,visualSupport:4,differentiation:4,speech:5,density:4,thesisFidelity:4,audienceValue:4,productBreadth:4},issues:[],notes:[],candidates:[],inspectedAssetIds:[]};
 const actions:string[]=[];
 const audio=await readFile('test-output/smoke/jobs/1a7bc546-6a6c-4757-90d9-7108cf0f55b1/narration.wav');
 await page.route('**/api/**',async route=>{const request=route.request(),url=new URL(request.url());let body:unknown;

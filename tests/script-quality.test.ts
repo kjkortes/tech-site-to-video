@@ -16,7 +16,7 @@ recoverEditorialEvidence(research,inventory);research.editorial={...fallbackEdit
 const outline:StoryOutline={revision:storyRevision,notes:[],visits:sections.map((s,i)=>({id:`v${i}`,sceneId:s.sceneId,sectionId:s.id,claimIds:[`c${i}`],purpose:s.heading,reason:s.heading,storyRole:i===0?'introduction':i===3?'surprise':i===4?'caveat':'proof'}))};
 const weak={id:'weak',angle:'feature summary',segments:quotes.map((_,i)=>({visitId:`v${i}`,claimIds:[`c${i}`],text:['This is Editor, an open-source image editor.','Its adjustment layers preserve pixels.','For filters, edits stay editable.','Beyond editing, AI agents use the same commands.','That is early alpha.'][i]}))};
 const strong={id:'strong',angle:'familiar versus unusual',segments:[{visitId:'v0',claimIds:['c0'],text:'This is Editor — an open-source image editor built in Rust. It covers layers, masks, brushes and PSD files.'},{visitId:'v1',claimIds:['c1'],text:'Better yet, adjustments stay editable. Reorder them or switch them off without changing the original pixels.'},{visitId:'v3',claimIds:['c3'],text:'Underneath that familiar interface, every action is a command. AI agents can use those same commands too.'},{visitId:'v4',claimIds:['c4'],text:"The catch? It’s early alpha, so daily professional work is still a stretch. For now, it’s one to watch."}]};
-const dimensions={hook:5,clarity:5,progression:5,visualSupport:5,differentiation:5,speech:5,density:5,thesisFidelity:5,audienceValue:5};
+const dimensions={hook:5,clarity:5,progression:5,visualSupport:5,differentiation:5,speech:5,density:5,thesisFidelity:5,audienceValue:5,productBreadth:5};
 function evaluation(id:string,{supported=true,revise=false}:{supported?:boolean;revise?:boolean}={}){return {candidateId:id,supported,groundingIssues:supported?[]:['Unsupported production readiness claim'],dimensions,needsRevision:revise,revisionNotes:revise?['Group repeated editable-feature explanations and improve spoken cadence.']:[]};}
 async function withMock(work:(requests:any[])=>Promise<void>,responses:object[]){const previousFetch=globalThis.fetch,key=config.llmKey,requests:any[]=[];config.llmKey='fixture';globalThis.fetch=async(_url,init)=>{const request=JSON.parse(init!.body as string);requests.push(request);const result=responses.shift();assert.ok(result,'Unexpected extra LLM call');return Response.json({choices:[{message:{content:JSON.stringify(result)}}]});};try{await withModelSettings({provider:'api',model:'chosen-writer',effort:'high',creativity:'balanced'},()=>work(requests));}finally{globalThis.fetch=previousFetch;config.llmKey=key;}}
 
@@ -26,7 +26,7 @@ test('quality heuristics catch the old summary cadence without imposing six para
  assert.ok(inspectScriptQuality({...script,segments:[{...script.segments[0],text:'This is Editor, an image editor. The source says it supports masks.'}]},inventory,outline).some(i=>i.code==='spoken-attribution'));
 });
 test('brief contains real visual descriptions, section map, previous script and editorial feedback; restores missing overview quotes exactly',()=>{
- const facts=structuredClone(research);facts.claims[0].quote=quotes[0].split('. ')[0]+'.';assert.equal(addOverviewEvidence(facts,inventory).length,1);assert.ok(facts.claims.some(c=>c.id.startsWith('script-overview') && c.quote.includes('Layers, masks')));assert.ok(facts.claims.every(c=>facts.sources[0].text.includes(c.quote)));assert.equal(addOverviewEvidence(facts,inventory).length,0);
+ const facts=structuredClone(research);facts.claims=facts.claims.filter(c=>!c.quote.startsWith('Layers, masks'));facts.claims[0].quote=quotes[0].split('. ')[0]+'.';assert.equal(addOverviewEvidence(facts,inventory).length,1);assert.ok(facts.claims.some(c=>c.id.startsWith('script-overview') && c.quote.includes('Layers, masks')));assert.ok(facts.claims.every(c=>facts.sources[0].text.includes(c.quote)));assert.equal(addOverviewEvidence(facts,inventory).length,0);
  const brief=scriptBrief(facts,inventory,outline,'Less technical',{title:'Editor',mode:'extractive',text:'Previous script',segments:[]});assert.equal(brief.previousScript,'Previous script');assert.equal(brief.revisionFeedback,'Less technical');assert.match(brief.visits[1].visuals[0].description,/Adjustment panel/);assert.equal(brief.documentMap[0].sections.length,5);
  assert.equal(capabilityOverview('The Great Wave off Kanagawa, Katsushika Hokusai, c. 1831.'),false);assert.equal(capabilityOverview('Editor on example.com, a caption card with layers, curves and live type.'),false);assert.equal(capabilityOverview('Digital, generative, music, games — if you make things, come say hi.'),false);
 });
@@ -68,7 +68,7 @@ test('writer may omit an old surprise visit while preserving identity, core evid
 test('a stylish thesis-drifting draft cannot beat a thesis-faithful draft',()=>withMock(async()=>{
  const script=await writeScript(structuredClone(research),inventory,outline);
  assert.equal(script.quality!.selectedCandidate,'faithful');assert.equal(script.quality!.revised,false);
-},[{candidates:[{...strong,id:'stylish'},{...strong,id:'faithful'}]},{evaluations:[{...evaluation('stylish'),dimensions:{...dimensions,thesisFidelity:3}},{...evaluation('faithful'),dimensions:{hook:3,clarity:3,progression:3,visualSupport:3,differentiation:3,speech:3,density:3,thesisFidelity:4,audienceValue:4}}]}]));
+},[{candidates:[{...strong,id:'stylish'},{...strong,id:'faithful'}]},{evaluations:[{...evaluation('stylish'),dimensions:{...dimensions,thesisFidelity:3}},{...evaluation('faithful'),dimensions:{hook:3,clarity:3,progression:3,visualSupport:3,differentiation:3,speech:3,density:3,thesisFidelity:4,audienceValue:4,productBreadth:4}}]}]));
 
 test('low audience value triggers revision despite excellent thesis and style scores',()=>withMock(async requests=>{
  const script=await writeScript(structuredClone(research),inventory,outline);
@@ -79,7 +79,7 @@ test('low audience value triggers revision despite excellent thesis and style sc
 test('audience value cannot be outweighed by a perfect style score',()=>withMock(async()=>{
  const script=await writeScript(structuredClone(research),inventory,outline);
  assert.equal(script.quality!.selectedCandidate,'viewer-value');assert.equal(script.quality!.revised,false);
-},[{candidates:[{...strong,id:'technical-style'},{...strong,id:'viewer-value'}]},{evaluations:[{...evaluation('technical-style'),dimensions:{...dimensions,audienceValue:3}},{...evaluation('viewer-value'),dimensions:{...dimensions,hook:3,speech:3,audienceValue:4}}]}]));
+},[{candidates:[{...strong,id:'technical-style'},{...strong,id:'viewer-value'}]},{evaluations:[{...evaluation('technical-style'),dimensions:{...dimensions,audienceValue:3}},{...evaluation('viewer-value'),dimensions:{...dimensions,hook:3,speech:3,audienceValue:4,productBreadth:4}}]}]));
 
 for(const mode of ['developer','tutorial'] as const)test(`${mode} writer receives its own audience policy`,()=>withMock(async requests=>{
  const script=await writeScript(structuredClone(research),{...inventory,contentMode:mode},outline);
@@ -106,3 +106,14 @@ test('takeaway citations cannot introduce new claims or appear outside the final
  const misplaced=structuredClone(script);Object.assign(misplaced.segments[1],{takeawayClaimIds:['c0']});
  assert.throws(()=>validateScript(misplaced,research,inventory),/Takeaway/);
 });
+
+test('low product breadth requires revision even with perfect thesis fidelity and audience value',()=>withMock(async requests=>{
+ const script=await writeScript(structuredClone(research),inventory,outline);
+ assert.equal(script.quality!.selectedCandidate,'breadth-revision');assert.equal(script.quality!.revised,true);
+ assert.ok(script.quality!.candidates[0].issues.some(i=>i.code==='product-breadth'));
+ assert.match(requests[2].messages[1].content,/broad|breadth|experience/);
+},[{candidates:[strong,{...strong,id:'other'}]},{evaluations:['strong','other'].map(id=>({...evaluation(id),dimensions:{...dimensions,productBreadth:2}}))},{...strong,id:'breadth-revision'},{evaluations:[evaluation('breadth-revision')]}]));
+test('product breadth cannot be outweighed by perfect style, thesis and audience scores',()=>withMock(async()=>{
+ const script=await writeScript(structuredClone(research),inventory,outline);
+ assert.equal(script.quality!.selectedCandidate,'whole-product');assert.equal(script.quality!.revised,false);
+},[{candidates:[{...strong,id:'narrow-style'},{...strong,id:'whole-product'}]},{evaluations:[{...evaluation('narrow-style'),dimensions:{...dimensions,productBreadth:3}},{...evaluation('whole-product'),dimensions:{...dimensions,hook:3,speech:3,productBreadth:4}}]}]));

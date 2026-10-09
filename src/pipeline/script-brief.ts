@@ -7,13 +7,10 @@ import {pagesFor} from './document-map';
 import {codeVisualsAllowed} from './content-policy';
 import {audienceValue,promotionalClaim} from './audience-value';
 import {isCore} from './editorial';
+import {capabilityOverview,experienceFacets} from './product-experience';
+export {capabilityOverview} from './product-experience';
 
 const normal=(text:string)=>text.replace(/\s+/g,' ').trim().toLowerCase();
-export function capabilityOverview(quote:string) {
-  return quote.length>=35 && quote.length<=450 && /[,;].*[,;]/.test(quote)
-    && /\b(?:supports?|features?|includes?|offers?|tools?|app|application|software|editor|layers|masks|files|folders|devices|sharing|editing|formats)\b/i.test(quote)
-    && !/https?:|\b[a-z0-9-]+\.(?:com|org|net)\b|\bstars?\b|sponsors?|\bbest\b|fastest|\bleading\b|caption card|come say hi|join (?:us|our)/i.test(quote);
-}
 export function productMedia(inventory:Inventory,sectionId:string) {
   return (inventory.assets||[]).filter(a=>a.sectionId===sectionId && ['image','gif','video','demo'].includes(a.type) && !/\b(?:star history|sponsor badge|translation status|contributors|download badge|build status)\b/i.test(a.description)).sort((a,b)=>b.quality*b.confidence-a.quality*a.confidence);
 }
@@ -29,7 +26,7 @@ export function addOverviewEvidence(research:Research,inventory:Inventory) {
   const additions:string[]=[];
   for(const sentence of source.text.split(/(?<=[.!?])\s+/)) {
     const quote=sentence.trim();
-    if(!capabilityOverview(quote) || !normal(first.text).includes(normal(quote)) || research.claims.some(c=>c.sourceId===source.id && (normal(c.quote).includes(normal(quote)) || normal(quote).includes(normal(c.quote)))))continue;
+    if(!capabilityOverview(quote) || experienceFacets(quote).length<3 || !normal(first.text).includes(normal(quote)) || research.claims.some(c=>c.sourceId===source.id && normal(c.quote)===normal(quote)))continue;
     // Concise capability overviews are easily lost in the research claim budget.
     // Keep plain literal lists/descriptions, excluding links, badges and hype.
     let id=`script-overview-${additions.length+1}`;while(research.claims.some(c=>c.id===id))id+='a';
@@ -47,6 +44,7 @@ export function scriptBrief(research:Research,inventory:Inventory,outline:StoryO
     product:research.title,mode:inventory.contentMode||'promotional',wordTarget:{idealMin:80,max:115,shorterWhenEarned:true},
     audience:codeVisualsAllowed(inventory.contentMode)?inventory.contentMode==='tutorial'?'users following reproducible steps':'developers interested in implementation':'general tech/software discovery',
     editorial:outline.editorial||research.editorial,
+    storySequence:outline.visits.map(v=>({visitId:v.id,role:v.storyRole})),
     preferredNumericProof:research.claims.filter(c=>outline.preferredProofClaimIds?.includes(c.id)),
     takeawayEvidence:research.claims.filter(c=>c.sourceId===finalSource&&earlierIds.has(c.id)&&editorial?.claims.some(rank=>rank.claimId===c.id&&(rank.category==='IDENTITY'||isCore(rank.category))&&promotionalClaim(rank))),
     omittedEvidence:(outline.editorial||research.editorial)?.claims.filter(c=>!outline.visits.some(v=>v.claimIds.includes(c.claimId))).map(c=>({...c,audienceValue:audienceValue(c),promotionalEligible:promotionalClaim(c),quote:research.claims.find(q=>q.id===c.claimId)?.quote})),

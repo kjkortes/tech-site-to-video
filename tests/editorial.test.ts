@@ -152,7 +152,7 @@ test('redundant compatibility proof yields to an omitted core workflow pillar',a
  globalThis.fetch=async()=>Response.json({choices:[{message:{content:JSON.stringify({sectionIds:['s0','s3','s6','s5']})}}]});
  try {
   const outline=await withModelSettings({provider:'api',model:'fixture',effort:'default',creativity:'balanced'},()=>buildOutline(research,inventory));
-  assert.ok(outline.visits.some(v=>v.sectionId==='s2'));
+  assert.ok(outline.visits.some(v=>v.sectionId==='s2'),JSON.stringify(outline));
   assert.equal(outline.visits.some(v=>v.sectionId==='s6'),false);
  }finally{globalThis.fetch=previousFetch;config.llmKey=key;}
 });

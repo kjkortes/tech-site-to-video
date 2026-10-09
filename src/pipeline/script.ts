@@ -19,7 +19,7 @@ export function validateScript(script: Script, research: Research, inventory: In
     if (!scene) throw new Error(`Narration has no discovered visual: ${segment.id}`);
     if(segment.takeawayClaimIds?.length) {
       if(index!==script.segments.length-1)throw new Error('Takeaway citations are only allowed in the final segment');
-      if(segment.takeawayClaimIds.some(id=>!narrated.has(id) || research.claims.find(c=>c.id===id)?.sourceId!==scene.sourceId || !['IDENTITY','CORE_PROMISE','CORE_PROOF'].includes(editorial?.claims.find(c=>c.claimId===id)?.category||'')))throw new Error('Takeaway citations must reprise previously narrated identity/core facts from this source');
+      if(segment.takeawayClaimIds.some(id=>!narrated.has(id) || research.claims.find(c=>c.id===id)?.sourceId!==scene.sourceId || !['IDENTITY','CORE_PROMISE','CORE_EXPERIENCE','CORE_PROOF'].includes(editorial?.claims.find(c=>c.claimId===id)?.category||'')))throw new Error('Takeaway citations must reprise previously narrated identity/core facts from this source');
     }
     if (segment.claimIds.some(id => !research.claims.some(c => c.id === id))) throw new Error('Narration references an unknown claim');
     if (segment.claimIds.some(id => research.claims.find(c => c.id === id)?.sourceId !== scene.sourceId)) throw new Error('Narration is paired with footage from a different source');
@@ -43,7 +43,7 @@ export async function writeScript(research: Research, inventory: Inventory, outl
   outline={...outline,editorial:outline.editorial||research.editorial};
   const intro=pagesFor(inventory).flatMap(p=>p.sections).find(s=>s.id===outline!.visits[0]?.sectionId);
   const overview=research.claims.filter(c=>c.id.startsWith('script-overview-') && capabilityOverview(c.quote) && c.sourceId===intro?.sourceId && intro.text.replace(/\s+/g,' ').toLowerCase().includes(c.quote.replace(/\s+/g,' ').toLowerCase())).map(c=>c.id);
-  outline={...outline,visits:outline.visits.map((v,i)=>i===0?{...v,claimIds:[...new Set([...v.claimIds,...overview])]}:v)};
+  outline={...outline,visits:outline.visits.map((v,i)=>i===0&&!outline!.visits.some(s=>s.storyRole==='core-experience'&&s.sectionId===intro?.id)?{...v,claimIds:[...new Set([...v.claimIds,...overview])]}:v)};
   if(modelEnabled() && !codeVisualsAllowed(inventory.contentMode))return writePromotionalScript(research,inventory,outline,feedback,context,validateScript);
   let segments: Script['segments'];
   if (modelEnabled()) {
