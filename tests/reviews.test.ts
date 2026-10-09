@@ -11,6 +11,7 @@ import {runPipeline} from '../src/pipeline';
 import {captureRevision,captureMode,viewport} from '../src/pipeline/browser';
 import {directorRevision} from '../src/pipeline/direct';
 import {mapRevision} from '../src/pipeline/document-map';
+import {fallbackEditorial} from '../src/pipeline/editorial';
 import {storyRevision} from '../src/pipeline/story';
 import {alignNarration,prepareUploadedSpeech} from '../src/pipeline/narration';
 import {run} from '../src/lib/process';
@@ -22,6 +23,7 @@ const descriptions=['Editor is an offline image editor.','Layers and masks prese
 const sections=descriptions.map((text,i)=>({id:`section-${i}`,pageId:'page-1',sourceId:'source-1',heading:['Editor','Features','Status'][i],order:i,selector:`#section-${i}`,scrollY:i*500,endY:(i+1)*500,text,assetIds:[],sceneId:`scene-${i}`}));
 const inventory:Inventory={contentMode:'promotional',sourceUrl:'https://example.com/',sourceType:'website',captureRevision,captureMode,captureViewport:viewport,directorRevision,mapRevision,notes:[],pages:[{id:'page-1',sourceId:'source-1',url:'https://example.com/',title:'Editor',order:0,sections}],scenes:sections.map(s=>({id:s.sceneId,url:'https://example.com/',title:s.heading,description:s.text,sourceId:s.sourceId,sectionId:s.id,actions:[],screenshot:`exploration/${s.sceneId}.png`})),assets:[]};
 const research:Research={title:'Editor',description:'',mode:'extractive',sources:[{id:'source-1',url:'https://example.com/',title:'Editor',text:descriptions.join(' ')}],claims:descriptions.map((text,i)=>({id:`c${i}`,sourceId:'source-1',text,quote:text}))};
+research.editorial=fallbackEditorial(research);
 const base:Script={title:'Editor',mode:'extractive',revision:storyRevision,segments:sections.map((s,i)=>({id:`segment-${i}`,sceneId:s.sceneId,sectionId:s.id,visitId:`visit-${i}`,text:i===0?'This is Editor, an offline image editor.':s.text,claimIds:[`c${i}`]}))};
 async function isolated(work:()=>Promise<void>){const previous=config.dataDir;config.dataDir=await mkdtemp(path.join(tmpdir(),'video-approvals-'));try{await work();}finally{await rm(config.dataDir,{recursive:true,force:true});config.dataDir=previous;}}
 async function seed(){const job=await createJob('https://example.com/');job.llm=model;await writeArtifact(job.id,'research.json',research);await writeArtifact(job.id,'inventory.json',inventory);const script=await persistScript(job,structuredClone(base),'generated');job.completed=['RESEARCHING','EXPLORING','SCRIPTING'];await saveJob(job);return {job,script};}

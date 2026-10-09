@@ -40,8 +40,10 @@ export function scriptBrief(research:Research,inventory:Inventory,outline:StoryO
   const sections=pagesFor(inventory).flatMap(p=>p.sections);
   return {
     product:research.title,mode:inventory.contentMode||'promotional',wordTarget:{idealMin:80,max:115,shorterWhenEarned:true},
+    editorial:outline.editorial||research.editorial,
+    omittedEvidence:research.editorial?.claims.filter(c=>!outline.visits.some(v=>v.claimIds.includes(c.claimId))).map(c=>({...c,quote:research.claims.find(q=>q.id===c.claimId)?.quote})),
     revisionFeedback:feedback||null,previousScript:previous?.text||previous?.segments.map(s=>s.text).join('\n\n')||null,
-    visualInventory:pagesFor(inventory).flatMap(p=>p.sections).flatMap(s=>productMedia(inventory,s.id)).slice(0,12).map(a=>({id:a.id,sectionId:a.sectionId,type:a.type,description:a.description,features:a.features,width:a.width,height:a.height,quality:a.quality,confidence:a.confidence})),
+    visualInventory:outline.visits.flatMap(v=>productMedia(inventory,v.sectionId)).slice(0,12).map(a=>({id:a.id,sectionId:a.sectionId,type:a.type,description:a.description,features:a.features,width:a.width,height:a.height,quality:a.quality,confidence:a.confidence})),
     visits:outline.visits.map(v=>{
       const section=sections.find(s=>s.id===v.sectionId);
       return {...v,heading:section?.heading,sourceContext:section?.text.slice(0,1800),
@@ -57,8 +59,7 @@ export async function scriptPreviews(id:string|undefined,inventory:Inventory,out
   const previews:{assetId:string;sectionId:string;path:string}[]=[];
   if(!id)return previews;
   const preferred=outline.visits.flatMap(v=>productMedia(inventory,v.sectionId).slice(0,1));
-  const remaining=pagesFor(inventory).flatMap(p=>p.sections).flatMap(s=>productMedia(inventory,s.id)).filter(a=>!preferred.some(p=>p.id===a.id));
-  const available=[...preferred,...remaining].filter((a):a is VisualAsset&{localPath:string;sectionId:string}=>!!a.localPath && !!a.sectionId);
+  const available=preferred.filter((a):a is VisualAsset&{localPath:string;sectionId:string}=>!!a.localPath && !!a.sectionId);
   await mkdir(path.join(jobDir(id),'assets'),{recursive:true});
   for(const asset of available.slice(0,4)) {
     const preview=path.join(jobDir(id),'assets',`script-${asset.id}.jpg`);

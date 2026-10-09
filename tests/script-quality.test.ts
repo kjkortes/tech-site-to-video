@@ -5,16 +5,18 @@ import {withModelSettings} from '../src/lib/llm';
 import {writeScript,validateScript} from '../src/pipeline/script';
 import {inspectScriptQuality,productOpening} from '../src/pipeline/script-quality';
 import {addOverviewEvidence,scriptBrief,capabilityOverview} from '../src/pipeline/script-brief';
+import {fallbackEditorial,recoverEditorialEvidence} from '../src/pipeline/editorial';
 import {storyRevision,buildOutline} from '../src/pipeline/story';
 import type {Script,Inventory,Research,StoryOutline} from '../src/lib/types';
 const quotes=['Editor is an open-source image editor built in Rust. Layers, masks, type, brushes and PSD files are supported.','Adjustment layers can be reordered or switched off without changing original pixels.','Filters on smart objects stay editable.','Every action is a command; the interface and AI agents use the same commands.','Editor is in early alpha, not yet suitable for daily professional work.'];
 const sections=quotes.map((text,i)=>({id:`s${i}`,pageId:'p',sourceId:'src',sceneId:`scene${i}`,heading:['Editor','Adjustments','Filters','Automation','Status'][i],text,order:i,selector:`#s${i}`,scrollY:i*500,endY:(i+1)*500,assetIds:i<3?[`asset${i}`]:[]}));
 const inventory:Inventory={contentMode:'promotional',notes:[],scenes:sections.map(s=>({id:s.sceneId,url:'https://github.com/example/editor',title:s.heading,description:s.text,sourceId:'src',sectionId:s.id,actions:[],screenshot:`${s.id}.png`})),pages:[{id:'p',sourceId:'src',title:'Editor',url:'https://github.com/example/editor',order:0,sections}],assets:sections.slice(0,3).map((s,i)=>({id:`asset${i}`,type:'image',sectionId:s.id,sceneId:s.sceneId,sourceId:'src',url:'https://example.com/image.png',pageUrl:'https://github.com/example/editor',description:['Image editor with layers and masks','Adjustment panel shows editable layers','Filter preview'][i],features:[s.heading],localPath:`asset${i}.png`,width:1600,height:1000,quality:.9,confidence:.9,animated:false,canEnlarge:true}))};
 const research:Research={title:'Editor',mode:'model',description:'',sources:[{id:'src',url:'https://github.com/example/editor',title:'Editor',text:quotes.join(' ')}],claims:quotes.map((quote,i)=>({id:`c${i}`,sourceId:'src',text:quote,quote}))};
+recoverEditorialEvidence(research,inventory);research.editorial={...fallbackEditorial(research),mode:'model'};
 const outline:StoryOutline={revision:storyRevision,notes:[],visits:sections.map((s,i)=>({id:`v${i}`,sceneId:s.sceneId,sectionId:s.id,claimIds:[`c${i}`],purpose:s.heading,reason:s.heading,storyRole:i===0?'introduction':i===3?'surprise':i===4?'caveat':'proof'}))};
 const weak={id:'weak',angle:'feature summary',segments:quotes.map((_,i)=>({visitId:`v${i}`,claimIds:[`c${i}`],text:['This is Editor, an open-source image editor.','Its adjustment layers preserve pixels.','For filters, edits stay editable.','Beyond editing, AI agents use the same commands.','That is early alpha.'][i]}))};
 const strong={id:'strong',angle:'familiar versus unusual',segments:[{visitId:'v0',claimIds:['c0'],text:'This is Editor — an open-source image editor built in Rust. It covers layers, masks, brushes and PSD files.'},{visitId:'v1',claimIds:['c1'],text:'Better yet, adjustments stay editable. Reorder them or switch them off without changing the original pixels.'},{visitId:'v3',claimIds:['c3'],text:'Underneath that familiar interface, every action is a command. AI agents can use those same commands too.'},{visitId:'v4',claimIds:['c4'],text:"The catch? It’s early alpha, so daily professional work is still a stretch. For now, it’s one to watch."}]};
-const dimensions={hook:5,clarity:5,progression:5,visualSupport:5,differentiation:5,speech:5,density:5};
+const dimensions={hook:5,clarity:5,progression:5,visualSupport:5,differentiation:5,speech:5,density:5,thesisFidelity:5};
 function evaluation(id:string,{supported=true,revise=false}:{supported?:boolean;revise?:boolean}={}){return {candidateId:id,supported,groundingIssues:supported?[]:['Unsupported production readiness claim'],dimensions,needsRevision:revise,revisionNotes:revise?['Group repeated editable-feature explanations and improve spoken cadence.']:[]};}
 async function withMock(work:(requests:any[])=>Promise<void>,responses:object[]){const previousFetch=globalThis.fetch,key=config.llmKey,requests:any[]=[];config.llmKey='fixture';globalThis.fetch=async(_url,init)=>{const request=JSON.parse(init!.body as string);requests.push(request);const result=responses.shift();assert.ok(result,'Unexpected extra LLM call');return Response.json({choices:[{message:{content:JSON.stringify(result)}}]});};try{await withModelSettings({provider:'api',model:'chosen-writer',effort:'high',creativity:'balanced'},()=>work(requests));}finally{globalThis.fetch=previousFetch;config.llmKey=key;}}
 
@@ -43,9 +45,9 @@ test('unsupported hype is rejected rather than accepted on a perfect style score
 test('candidate cannot omit the caveat, move claims to a different section, or override the source intro',()=>withMock(async()=>{
  const script=await writeScript(structuredClone(research),inventory,outline);assert.equal(script.quality!.selectedCandidate,'strong');assert.ok(script.quality!.candidates.some(c=>c.id==='bad'&&!c.supported&&c.issues.some(i=>i.code==='structure')));
 },[{candidates:[{...strong,id:'bad',segments:strong.segments.slice(0,-1)},strong]},{evaluations:[evaluation('strong')]}]));
-test('outline retains a late differentiator and caveat even if navigation picks too many feature sections',()=>withMock(async()=>{
- const result=await buildOutline(structuredClone(research),inventory,'Focus on automation');assert.ok(result.visits.some(v=>v.sectionId==='s3'&&v.storyRole==='surprise'));assert.equal(result.visits.at(-1)!.sectionId,'s4');
-},[{sectionIds:['s0','s1','s2']}]));
+test('outline can omit secondary differentiation while retaining the caveat',()=>withMock(async()=>{
+ const result=await buildOutline(structuredClone(research),inventory,'Focus on automation');assert.equal(result.visits.some(v=>v.sectionId==='s3'),false);assert.equal(result.visits.at(-1)!.sectionId,'s4');
+},[{sectionIds:['s0','s1']}]));
 test('promotional selection skips optional CLI sections and does not demand visuals with no evidence-backed visit',()=>withMock(async()=>{
  const altered=structuredClone(inventory);altered.pages![0].sections[2].heading='Command Line Interface';
  const result=await buildOutline(structuredClone(research),altered);assert.equal(result.visits.some(v=>v.sectionId==='s2'),false);
@@ -54,3 +56,16 @@ test('promotional selection skips optional CLI sections and does not demand visu
  assert.equal(inspectScriptQuality(script,textOnly,outline).some(i=>i.code==='visual-evidence'),false);
  assert.ok(scriptBrief(research,inventory,outline).visualInventory.some(a=>a.description.includes('Adjustment')));
 },[{sectionIds:['s0','s1','s2','s3','s4']}]));
+
+test('low thesis fidelity triggers revision despite excellent style scores',()=>withMock(async()=>{
+ const script=await writeScript(structuredClone(research),inventory,outline,'You missed the point. Focus on compatibility.');
+ assert.equal(script.quality!.revised,true);assert.equal(script.quality!.dimensions!.thesisFidelity,5);
+},[{candidates:[strong,{...strong,id:'other'}]},{evaluations:['strong','other'].map(id=>({...evaluation(id),dimensions:{...dimensions,thesisFidelity:2}}))},{...strong,id:'thesis-revision'},{evaluations:[evaluation('thesis-revision')]}]));
+test('writer may omit an old surprise visit while preserving identity, core evidence and caveat',()=>withMock(async()=>{
+ const script=await writeScript(structuredClone(research),inventory,outline);
+ assert.equal(script.quality!.selectedCandidate,'core-only');assert.equal(script.segments.some(s=>s.visitId==='v3'),false);
+},[{candidates:[{...strong,id:'core-only',segments:strong.segments.filter(s=>s.visitId!=='v3')},{...strong,id:'core-only2',segments:strong.segments.filter(s=>s.visitId!=='v3')}]},{evaluations:[evaluation('core-only'),evaluation('core-only2')]}]));
+test('a stylish thesis-drifting draft cannot beat a thesis-faithful draft',()=>withMock(async()=>{
+ const script=await writeScript(structuredClone(research),inventory,outline);
+ assert.equal(script.quality!.selectedCandidate,'faithful');assert.equal(script.quality!.revised,false);
+},[{candidates:[{...strong,id:'stylish'},{...strong,id:'faithful'}]},{evaluations:[{...evaluation('stylish'),dimensions:{...dimensions,thesisFidelity:3}},{...evaluation('faithful'),dimensions:{hook:3,clarity:3,progression:3,visualSupport:3,differentiation:3,speech:3,density:3,thesisFidelity:4}}]}]));

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { launchBrowser, newContext, navigate, inspectPage, relevantLinks, dismissConsent } from './browser';
 import { modelJson, modelEnabled } from '../lib/llm';
 import { Claim, Research, Source } from '../lib/types';
+import {ensureEditorial} from './editorial';
 
 const claimSchema = z.object({ title: z.string().max(100), description: z.string().max(500), claims: z.array(z.object({ text: z.string().max(400), sourceId: z.string(), quote: z.string().max(600) })).min(1).max(18) });
 export function backedClaims(claims: Omit<Claim, 'id'>[], sources: Source[]): Claim[] {
@@ -36,12 +37,14 @@ export async function research(url: string): Promise<Research> {
   const compactBrand = pieces.length > 1 && pieces.at(-1)!.length <= 32 ? pieces.at(-1)! : pieces[0];
   const title = (address.hostname === 'github.com' ? address.pathname.split('/').filter(Boolean).slice(0, 2).join('/') : compactBrand).replace(/^GitHub\s*-\s*/i, '').slice(0, 90) || address.hostname;
   if (modelEnabled()) {
-    const result = await modelJson('Research this product. Return {title,description,claims:[{text,sourceId,quote}]}. Every quote must be an exact substring of its source. Use a short exact product title. Preserve document order. Start with a precise product-description quote, then retain 10–16 concise quotes across the important feature, media, technical, platform and status sections. Do not exhaust the claim budget on installation variants. Identify capabilities, pricing and license only where documented. Ignore navigation and marketing superlatives.', sources, claimSchema);
+    const result = await modelJson('Research the project’s own positioning FIRST. Return {title,description,claims:[{text,sourceId,quote}]}. Every quote must be an exact substring of its source. Use a short exact product title. Preserve document order. Prioritize the title/tagline, opening README description, why sections and explicit high-level pillars as a group. Retain the core promise and its strongest workflow, compatibility and architecture evidence, then important caveats and genuinely relevant secondary differentiators. Keep 10–16 concise quotes; do not spend the budget equally across feature/media/platform sections. Screenshots do not establish editorial importance. Minor dialogs, installers and protocol names must not displace core evidence. Identify pricing and license only where documented. Ignore navigation and marketing superlatives.', sources, claimSchema);
     const claims = backedClaims(result.claims, sources);
     if (!claims.length) throw new Error('The research model returned no source-backed claims.');
-    return { ...result, claims, sources, mode: 'model' };
+    const facts:Research={...result,claims,sources,mode:'model'};
+    await ensureEditorial(facts);return facts;
   }
   const claims = extractClaims(sources);
   if (!claims.length) throw new Error('No usable source excerpts found. Configure a research model or use a documentation URL.');
-  return { title, description, sources, claims, mode: 'extractive' };
+  const facts:Research={title,description,sources,claims,mode:'extractive'};
+  await ensureEditorial(facts);return facts;
 }

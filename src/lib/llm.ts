@@ -23,10 +23,10 @@ export function creativeInstruction(task: ModelTask = 'script') {
   if (task === 'motion') return 'Task profile: balanced attention direction. Use subtle movement only when it clarifies the current content; a static shot is valid.';
   const directions = {
     restrained: 'Keep narration direct, concise and explanatory, with literal source-backed descriptions.',
-    balanced: 'Use an engaging product-first hook, natural connective phrasing, factual curiosity with a quick payoff, and an escalating concise story within the supplied walkthrough.',
+    balanced: 'Use an engaging product-first hook, natural connective phrasing, a clear product thesis and evidence that proves it, and a connected concise story within the supplied walkthrough.',
     bold: 'Use inventive source-grounded hook wording and vivid, economical explanations and a connected story arc within the supplied walkthrough. Keep the product-first opening and fixed visit order.',
   };
-  return `Script creativity: ${directions[currentModelSettings().creativity]} Creativity changes wording only; every factual claim requires evidence. Keep source order, navigation and section ownership. The script task may select a stronger subset of optional visits, group related evidence in the same visit and vary spoken rhythm; it may not move claims between sections.`;
+  return `Script creativity: ${directions[currentModelSettings().creativity]} Creativity changes wording only; every factual claim requires evidence. Prove the supplied product thesis throughout the body; secondary differentiation is optional and must not hijack it. Do not manufacture a twist. Keep source order, navigation and section ownership. The script task may select a stronger subset of optional visits, group related evidence in the same visit and vary spoken rhythm; it may not move claims between sections.`;
 }
 
 export function modelProvider(): 'api' | 'codex' | 'extractive' {

@@ -23,7 +23,7 @@ export interface Job { scriptApproval?:{version:number;hash:string;approvedAt:st
 }
 export interface Source { id: string; url: string; title: string; text: string; }
 export interface Claim { id: string; text: string; sourceId: string; quote: string; }
-export interface Research { title: string; description: string; sources: Source[]; claims: Claim[]; mode: 'model' | 'extractive'; }
+export interface Research { title: string; description: string; sources: Source[]; claims: Claim[]; mode: 'model' | 'extractive'; editorial?: import('../pipeline/editorial').EditorialBrief; }
 export const browserActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('scroll'), text: z.string().max(200).optional(), y: z.number().min(0).max(30000).optional() }),
   z.object({ type: z.literal('click'), selector: z.string().max(300).optional(), text: z.string().max(120), role: z.enum(['button', 'link', 'tab']).default('button') }),
@@ -34,7 +34,7 @@ export interface PageSection { anchors?: { selector: string; scrollY: number; te
 export interface DocumentPage { id: string; sourceId: string; url: string; title: string; order: number; sections: PageSection[]; }
 export interface WalkLocation { pageId: string; sectionId: string; sectionIndex: number; url: string; scrollY: number; selector: string; heading: string; }
 export interface WalkthroughIntent { visitId: string; location: WalkLocation; role: 'hook' | 'context' | 'cutaway' | 'return' | 'ending'; previousLocation?: WalkLocation; nextLocation?: WalkLocation; returnTarget?: WalkLocation; transition?: { from: WalkLocation; duration: number }; }
-export interface StoryOutline { revision: number; visits: { id: string; sectionId: string; sceneId: string; claimIds: string[]; purpose: string; reason: string; storyRole?: 'introduction'|'core-experience'|'proof'|'technical'|'surprise'|'caveat' }[]; notes: string[]; }
+export interface StoryOutline { revision: number; editorial?: import('../pipeline/editorial').EditorialBrief; visits: { id: string; sectionId: string; sceneId: string; claimIds: string[]; purpose: string; reason: string; storyRole?: 'introduction'|'core-experience'|'proof'|'technical'|'surprise'|'differentiator'|'caveat' }[]; notes: string[]; }
 export interface ContinuityReport { passed: boolean; score: number; browserDuration: number; cutawayDuration: number; issues: DiversityReport['issues']; }
 export interface FocusRegion { x: number; y: number; width: number; height: number; } // normalized source coordinates
 export type AssetType = 'image' | 'gif' | 'video' | 'section' | 'code' | 'demo';

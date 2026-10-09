@@ -1,6 +1,6 @@
 import type {Script,Inventory,StoryOutline} from '../lib/types';
-import {productMedia} from './script-brief';
-export const qualityDimensions=['hook','clarity','progression','visualSupport','differentiation','speech','density'] as const;
+import {isCore} from './editorial';
+export const qualityDimensions=['hook','clarity','progression','visualSupport','differentiation','speech','density','thesisFidelity'] as const;
 export type QualityDimension=typeof qualityDimensions[number];
 export interface ScriptQualityIssue {code:string;detail:string;}
 export interface ScriptQualityReport {
@@ -10,7 +10,7 @@ export interface ScriptQualityReport {
   model?:{provider:string;model:string;effort:string;creativity:string};
   inspectedAssetIds:string[];feedback?:string;
 }
-export const scriptWritingRevision=1;
+export const scriptWritingRevision=2;
 export const wordCount=(text:string)=>(text.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)||[]).length;
 export function productOpening(text:string,title?:string) {
   const name=title?title.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'):'[^,—–:]+?';
@@ -29,10 +29,14 @@ export function inspectScriptQuality(script:Script,inventory:Inventory,outline:S
   const bridges=starts.filter(s=>['its','for','that','beyond'].includes(s));
   if(bridges.length>=3 && bridges.length>=starts.length*.6)add('summary-cadence','The middle reads like linked documentation summaries; vary rhythm and build a clear contrast/payoff.');
   if([...new Set(starts)].some(word=>starts.filter(s=>s===word).length>=3))add('repeated-start','Several beats begin the same way; vary the sentence structure.');
-  const surprises=outline.visits.filter(v=>v.storyRole==='surprise');
-  const usedSurprise=script.segments.findIndex(s=>surprises.some(v=>v.id===s.visitId));
-  if(surprises.length && usedSurprise<0)add('missing-differentiator','Preserve the strongest unusual source-backed point.');
-  if(usedSurprise>0 && usedSurprise<script.segments.length/2)add('early-reveal','Save the differentiator for the latter half, after showing the core product.');
-  if(outline.visits.some(v=>productMedia(inventory,v.sectionId).length) && script.segments.every(s=>!productMedia(inventory,s.sectionId||'').length))add('visual-evidence','The story skips the available visuals in its evidence-backed visits.');
+  const brief=outline.editorial||script.outline?.editorial;
+  if(brief) {
+    const ranks=new Map(brief.claims.map(c=>[c.claimId,c]));
+    const body=script.segments.slice(1).filter(s=>!s.claimIds.some(id=>ranks.get(id)?.category==='CAVEAT'));
+    const coreBody=body.filter(s=>s.claimIds.some(id=>isCore(ranks.get(id)?.category||'')));
+    if(brief.claims.some(c=>isCore(c.category)) && (!coreBody.length || coreBody.length<body.length/2))add('thesis-fidelity','The opening identifies the project, but most body beats do not prove its thesis. Restore core workflow/compatibility/architecture evidence; cut generic details or secondary differentiation that hijacks the story.');
+    const used=new Set(script.segments.flatMap(s=>s.claimIds));
+    if(brief.strongestProof.some(p=>p.claimIds.every(id=>!used.has(id))) && script.segments.some(s=>s.claimIds.length && s.claimIds.every(id=>['MINOR_FEATURE','TECHNICAL_TRIVIA'].includes(ranks.get(id)?.category||''))))add('editorial-importance','A minor feature displaced omitted strongest core proof. Give runtime to the thesis evidence.');
+  }
   return issues;
 }
