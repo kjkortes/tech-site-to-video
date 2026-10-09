@@ -10,10 +10,11 @@ import {captureMode,captureRevision,viewport} from '../src/pipeline/browser';
 import {directorRevision} from '../src/pipeline/direct';
 import {mapRevision} from '../src/pipeline/document-map';
 import {wordCount} from '../src/pipeline/script-quality';
+import {promotionalClaim} from '../src/pipeline/audience-value';
 import type {Job,Research,Script,Inventory} from '../src/lib/types';
 const sources=process.argv.slice(2);
 if(!sources.length)sources.push('data/jobs/7d081e19-82f3-438b-82a2-668c5aa5efae','test-output/vo-scripts/jobs/444245bc-3d1d-4418-bbac-d0ba3abb9e56');
-config.dataDir=path.resolve('test-output/editorial');config.database='';config.redis='';
+config.dataDir=path.resolve(process.env.EDITORIAL_OUTPUT_DIR||'test-output/editorial');config.database='';config.redis='';
 await mkdir(config.dataDir,{recursive:true});
 const comparisons=[];
 for(const source of sources) {
@@ -31,11 +32,14 @@ for(const source of sources) {
  for(const file of ['narration.wav','shot-plan.json'])assert.equal(await stat(path.join(jobDir(job.id),file)).then(()=>true).catch(()=>false),false);
  const script=await readArtifact<Script>(job.id,'script.json'),research=await readArtifact<Research>(job.id,'research.json');
  assert.ok(research.editorial);assert.ok(script.quality);assert.ok(script.quality.dimensions!.thesisFidelity>=4,JSON.stringify(script.quality));
+ assert.ok(script.quality.dimensions!.audienceValue>=4,JSON.stringify(script.quality));
+ assert.ok(script.segments.flatMap(s=>s.claimIds).every(id=>promotionalClaim(research.editorial!.claims.find(c=>c.claimId===id)!)),'Promotional facts must earn audience runtime');
+ assert.equal(script.quality.issues.some(i=>['audience-value','audience-proof','technical-density','weak-takeaway'].includes(i.code)),false,JSON.stringify(script.quality.issues));
  assert.ok(script.segments.length<=5);
  if(research.editorial.claims.some(c=>c.category==='CAVEAT' && c.thesisContribution>=3))assert.ok(script.outline!.visits.some(v=>v.storyRole==='caveat'),'Important caveat must remain narratable');assert.equal(script.outline!.visits.some(v=>v.storyRole==='surprise'),false);
  console.log(JSON.stringify({title:script.title,script:script.text,words:wordCount(script.text!),dimensions:script.quality.dimensions,status:script.quality.status,visits:script.outline!.visits.map(v=>v.purpose)},null,2));
  comparisons.push({jobId:job.id,title:script.title,old:old.text||old.segments.map(s=>s.text).join('\n\n'),new:script.text,editorial:research.editorial,quality:script.quality});
 }
 await writeFile(path.join(config.dataDir,'comparison.json'),JSON.stringify(comparisons,null,2));
-await writeFile(path.join(config.dataDir,'comparison.md'),comparisons.map(c=>`# ${c.title}\n\n## Old VO\n\n${c.old}\n\n## New VO\n\n${c.new}\n\nThesis fidelity: ${c.quality!.dimensions!.thesisFidelity}/5. Job: ${c.jobId}. Stopped at SCRIPT_REVIEW.\n`).join('\n'));
-console.log('PASS: thesis-led VO and human review gate. test-output/editorial/comparison.md');
+await writeFile(path.join(config.dataDir,'comparison.md'),comparisons.map(c=>`# ${c.title}\n\n## Old VO\n\n${c.old}\n\n## New VO\n\n${c.new}\n\nThesis fidelity: ${c.quality!.dimensions!.thesisFidelity}/5. Audience value: ${c.quality!.dimensions!.audienceValue}/5. Job: ${c.jobId}. Stopped at SCRIPT_REVIEW.\n`).join('\n'));
+console.log(`PASS: audience-valued thesis-led VO and human review gate. ${path.join(config.dataDir,'comparison.md')}`);

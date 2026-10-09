@@ -5,6 +5,8 @@ import {jobDir} from '../lib/store';
 import {run} from '../lib/process';
 import {pagesFor} from './document-map';
 import {codeVisualsAllowed} from './content-policy';
+import {audienceValue,promotionalClaim} from './audience-value';
+import {isCore} from './editorial';
 
 const normal=(text:string)=>text.replace(/\s+/g,' ').trim().toLowerCase();
 export function capabilityOverview(quote:string) {
@@ -38,16 +40,23 @@ export function addOverviewEvidence(research:Research,inventory:Inventory) {
 }
 export function scriptBrief(research:Research,inventory:Inventory,outline:StoryOutline,feedback?:string,previous?:Script) {
   const sections=pagesFor(inventory).flatMap(p=>p.sections);
+  const editorial=outline.editorial||research.editorial;
+  const finalSource=inventory.scenes.find(s=>s.id===outline.visits.at(-1)?.sceneId)?.sourceId;
+  const earlierIds=new Set(outline.visits.slice(0,-1).flatMap(v=>v.claimIds));
   return {
     product:research.title,mode:inventory.contentMode||'promotional',wordTarget:{idealMin:80,max:115,shorterWhenEarned:true},
+    audience:codeVisualsAllowed(inventory.contentMode)?inventory.contentMode==='tutorial'?'users following reproducible steps':'developers interested in implementation':'general tech/software discovery',
     editorial:outline.editorial||research.editorial,
-    omittedEvidence:research.editorial?.claims.filter(c=>!outline.visits.some(v=>v.claimIds.includes(c.claimId))).map(c=>({...c,quote:research.claims.find(q=>q.id===c.claimId)?.quote})),
+    preferredNumericProof:research.claims.filter(c=>outline.preferredProofClaimIds?.includes(c.id)),
+    takeawayEvidence:research.claims.filter(c=>c.sourceId===finalSource&&earlierIds.has(c.id)&&editorial?.claims.some(rank=>rank.claimId===c.id&&(rank.category==='IDENTITY'||isCore(rank.category))&&promotionalClaim(rank))),
+    omittedEvidence:(outline.editorial||research.editorial)?.claims.filter(c=>!outline.visits.some(v=>v.claimIds.includes(c.claimId))).map(c=>({...c,audienceValue:audienceValue(c),promotionalEligible:promotionalClaim(c),quote:research.claims.find(q=>q.id===c.claimId)?.quote})),
     revisionFeedback:feedback||null,previousScript:previous?.text||previous?.segments.map(s=>s.text).join('\n\n')||null,
     visualInventory:outline.visits.flatMap(v=>productMedia(inventory,v.sectionId)).slice(0,12).map(a=>({id:a.id,sectionId:a.sectionId,type:a.type,description:a.description,features:a.features,width:a.width,height:a.height,quality:a.quality,confidence:a.confidence})),
     visits:outline.visits.map(v=>{
       const section=sections.find(s=>s.id===v.sectionId);
       return {...v,heading:section?.heading,sourceContext:section?.text.slice(0,1800),
         quotes:research.claims.filter(c=>v.claimIds.includes(c.id)),
+        claimEditorial:(outline.editorial||research.editorial)?.claims.filter(c=>v.claimIds.includes(c.claimId)).map(c=>({...c,audienceValue:audienceValue(c)})),
         visuals:productMedia(inventory,v.sectionId).slice(0,3).map(a=>({id:a.id,type:a.type,description:a.description,features:a.features,quality:a.quality,confidence:a.confidence,width:a.width,height:a.height,available:!!a.localPath||a.type==='demo'})),
         presentation:productMedia(inventory,v.sectionId).length?'Source product media, established wide':'Contextual page section; no generated code visual'};
     }),

@@ -16,7 +16,7 @@ recoverEditorialEvidence(research,inventory);research.editorial={...fallbackEdit
 const outline:StoryOutline={revision:storyRevision,notes:[],visits:sections.map((s,i)=>({id:`v${i}`,sceneId:s.sceneId,sectionId:s.id,claimIds:[`c${i}`],purpose:s.heading,reason:s.heading,storyRole:i===0?'introduction':i===3?'surprise':i===4?'caveat':'proof'}))};
 const weak={id:'weak',angle:'feature summary',segments:quotes.map((_,i)=>({visitId:`v${i}`,claimIds:[`c${i}`],text:['This is Editor, an open-source image editor.','Its adjustment layers preserve pixels.','For filters, edits stay editable.','Beyond editing, AI agents use the same commands.','That is early alpha.'][i]}))};
 const strong={id:'strong',angle:'familiar versus unusual',segments:[{visitId:'v0',claimIds:['c0'],text:'This is Editor — an open-source image editor built in Rust. It covers layers, masks, brushes and PSD files.'},{visitId:'v1',claimIds:['c1'],text:'Better yet, adjustments stay editable. Reorder them or switch them off without changing the original pixels.'},{visitId:'v3',claimIds:['c3'],text:'Underneath that familiar interface, every action is a command. AI agents can use those same commands too.'},{visitId:'v4',claimIds:['c4'],text:"The catch? It’s early alpha, so daily professional work is still a stretch. For now, it’s one to watch."}]};
-const dimensions={hook:5,clarity:5,progression:5,visualSupport:5,differentiation:5,speech:5,density:5,thesisFidelity:5};
+const dimensions={hook:5,clarity:5,progression:5,visualSupport:5,differentiation:5,speech:5,density:5,thesisFidelity:5,audienceValue:5};
 function evaluation(id:string,{supported=true,revise=false}:{supported?:boolean;revise?:boolean}={}){return {candidateId:id,supported,groundingIssues:supported?[]:['Unsupported production readiness claim'],dimensions,needsRevision:revise,revisionNotes:revise?['Group repeated editable-feature explanations and improve spoken cadence.']:[]};}
 async function withMock(work:(requests:any[])=>Promise<void>,responses:object[]){const previousFetch=globalThis.fetch,key=config.llmKey,requests:any[]=[];config.llmKey='fixture';globalThis.fetch=async(_url,init)=>{const request=JSON.parse(init!.body as string);requests.push(request);const result=responses.shift();assert.ok(result,'Unexpected extra LLM call');return Response.json({choices:[{message:{content:JSON.stringify(result)}}]});};try{await withModelSettings({provider:'api',model:'chosen-writer',effort:'high',creativity:'balanced'},()=>work(requests));}finally{globalThis.fetch=previousFetch;config.llmKey=key;}}
 
@@ -68,4 +68,41 @@ test('writer may omit an old surprise visit while preserving identity, core evid
 test('a stylish thesis-drifting draft cannot beat a thesis-faithful draft',()=>withMock(async()=>{
  const script=await writeScript(structuredClone(research),inventory,outline);
  assert.equal(script.quality!.selectedCandidate,'faithful');assert.equal(script.quality!.revised,false);
-},[{candidates:[{...strong,id:'stylish'},{...strong,id:'faithful'}]},{evaluations:[{...evaluation('stylish'),dimensions:{...dimensions,thesisFidelity:3}},{...evaluation('faithful'),dimensions:{hook:3,clarity:3,progression:3,visualSupport:3,differentiation:3,speech:3,density:3,thesisFidelity:4}}]}]));
+},[{candidates:[{...strong,id:'stylish'},{...strong,id:'faithful'}]},{evaluations:[{...evaluation('stylish'),dimensions:{...dimensions,thesisFidelity:3}},{...evaluation('faithful'),dimensions:{hook:3,clarity:3,progression:3,visualSupport:3,differentiation:3,speech:3,density:3,thesisFidelity:4,audienceValue:4}}]}]));
+
+test('low audience value triggers revision despite excellent thesis and style scores',()=>withMock(async requests=>{
+ const script=await writeScript(structuredClone(research),inventory,outline);
+ assert.equal(script.quality!.revised,true);assert.equal(script.quality!.dimensions!.audienceValue,5);
+ assert.ok(script.quality!.candidates[0].issues.some(i=>i.code==='audience-value'));
+ assert.match(requests[1].messages[0].content,/AUDIENCE_VALUE/);
+},[{candidates:[strong,{...strong,id:'other'}]},{evaluations:['strong','other'].map(id=>({...evaluation(id),dimensions:{...dimensions,audienceValue:2}}))},{...strong,id:'audience-revision'},{evaluations:[evaluation('audience-revision')]}]));
+test('audience value cannot be outweighed by a perfect style score',()=>withMock(async()=>{
+ const script=await writeScript(structuredClone(research),inventory,outline);
+ assert.equal(script.quality!.selectedCandidate,'viewer-value');assert.equal(script.quality!.revised,false);
+},[{candidates:[{...strong,id:'technical-style'},{...strong,id:'viewer-value'}]},{evaluations:[{...evaluation('technical-style'),dimensions:{...dimensions,audienceValue:3}},{...evaluation('viewer-value'),dimensions:{...dimensions,hook:3,speech:3,audienceValue:4}}]}]));
+
+for(const mode of ['developer','tutorial'] as const)test(`${mode} writer receives its own audience policy`,()=>withMock(async requests=>{
+ const script=await writeScript(structuredClone(research),{...inventory,contentMode:mode},outline);
+ assert.equal(script.contentMode,mode);assert.equal(requests.length,1);
+ assert.match(requests[0].messages[0].content,mode==='developer'?/implementation details, protocols, architecture/i:/steps, commands and code/i);
+ assert.equal(JSON.parse(requests[0].messages[1].content).contentMode,mode);
+},[{segments:weak.segments}]));
+
+test('a main caveat in the introduction cannot be dropped by citing only its identity claim',()=>withMock(async()=>{
+ const altered=structuredClone(inventory);altered.pages![0].sections[0].text+=' '+quotes[4];
+ const colocated={...outline,editorial:research.editorial,visits:outline.visits.filter(v=>v.id!=='v4').map(v=>v.id==='v0'?{...v,claimIds:[...v.claimIds,'c4']}:v)};
+ await assert.rejects(()=>writeScript(structuredClone(research),altered,colocated),/Neither VO candidate/);
+},[{candidates:[{...strong,id:'drop',segments:strong.segments.filter(s=>s.visitId!=='v4')},{...strong,id:'drop2',segments:strong.segments.filter(s=>s.visitId!=='v4')}]},{evaluations:[evaluation('drop'),evaluation('drop2')]}]));
+
+test('final takeaway keeps separate citations for previously narrated identity/core facts',()=>withMock(async requests=>{
+ const script=await writeScript(structuredClone(research),inventory,outline);
+ assert.ok((script.segments.at(-1) as unknown as {takeawayClaimIds?:string[]}).takeawayClaimIds?.includes('c0'));
+ assert.match(requests[1].messages[0].content,/takeawayClaimIds/);
+},[{candidates:[{...strong,id:'recap',segments:strong.segments.map(s=>s.visitId==='v4'?{...s,takeawayClaimIds:['c0','c1']}:s)},{...strong,id:'recap2',segments:strong.segments.map(s=>s.visitId==='v4'?{...s,takeawayClaimIds:['c0','c1']}:s)}]},{evaluations:[evaluation('recap'),evaluation('recap2')]}]));
+test('takeaway citations cannot introduce new claims or appear outside the final segment',()=>{
+ const script:Script={title:'Editor',mode:'model',segments:strong.segments.map(s=>({...s,id:s.visitId,sceneId:`scene${s.visitId.slice(1)}`,sectionId:`s${s.visitId.slice(1)}`}))};
+ const unspoken=structuredClone(script);Object.assign(unspoken.segments.at(-1)!,{takeawayClaimIds:['c2']});
+ assert.throws(()=>validateScript(unspoken,research,inventory),/Takeaway/);
+ const misplaced=structuredClone(script);Object.assign(misplaced.segments[1],{takeawayClaimIds:['c0']});
+ assert.throws(()=>validateScript(misplaced,research,inventory),/Takeaway/);
+});

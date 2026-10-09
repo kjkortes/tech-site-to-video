@@ -5,8 +5,9 @@ import {modelEnabled,modelJson} from '../lib/llm';
 import {promotionalPolicy,codeVisualsAllowed} from './content-policy';
 import {addOverviewEvidence,productMedia,capabilityOverview} from './script-brief';
 import {ensureEditorial,isCore} from './editorial';
+import {promotionalClaim,audienceBeatScore,audienceValue,numericCapabilityProof} from './audience-value';
 
-export const storyRevision=5;
+export const storyRevision=6;
 const normal=(s:string)=>s.replace(/\s+/g,' ').trim().toLowerCase();
 export function sectionClaims(research:Research,inventory:Inventory) {
  return pagesFor(inventory).flatMap(p=>p.sections).map(section=>({section,claims:research.claims.filter(c=>(!c.id.startsWith('script-overview-')||capabilityOverview(c.quote)) && c.sourceId===section.sourceId && normal(section.text).includes(normal(c.quote)))}));
@@ -17,26 +18,35 @@ export async function buildOutline(research:Research,inventory:Inventory,feedbac
  const rankings=new Map(editorial.claims.map(c=>[c.claimId,c]));
  const proofIds=new Set(editorial.strongestProof.flatMap(p=>p.claimIds));
  let candidates=sectionClaims(research,inventory).filter(v=>v.claims.length && v.section.sceneId);
- if(promotional)candidates=candidates.map(v=>({...v,claims:v.claims.filter(c=>{const rank=rankings.get(c.id);return rank && rank.thesisContribution>=3 && !['MINOR_FEATURE','TECHNICAL_TRIVIA'].includes(rank.category);})})).filter(v=>v.claims.length && (!/\b(command.line|terminal|installation|dependencies|development)\b/i.test(v.section.heading) || v.claims.some(c=>isCore(rankings.get(c.id)!.category))));
+ if(promotional)candidates=candidates.map(v=>({...v,claims:v.claims.filter(c=>{const rank=rankings.get(c.id);return rank && rank.thesisContribution>=3 && promotionalClaim(rank);})})).filter(v=>v.claims.length && (!/\b(command.line|terminal|installation|dependencies|development)\b/i.test(v.section.heading) || v.claims.some(c=>isCore(rankings.get(c.id)!.category))));
  if(!candidates.length)throw new Error('No editorial evidence belongs to mapped document sections. Refresh research before scripting.');
  const identityIds=new Set(editorial.productIdentity.claimIds);
  const intro=candidates.find(v=>v.claims.some(c=>identityIds.has(c.id)))||candidates[0];
  const caveatIds=new Set(editorial.importantCaveat?.claimIds||[]);
- const caveatScore=(v:typeof candidates[number])=>Math.max(...v.claims.filter(c=>rankings.get(c.id)?.category==='CAVEAT').map(c=>rankings.get(c.id)!.thesisContribution));
- const ending=candidates.filter(v=>v!==intro && v.claims.some(c=>rankings.get(c.id)?.category==='CAVEAT'))
-  .sort((a,b)=>caveatScore(b)-caveatScore(a)||Number(b.claims.some(c=>caveatIds.has(c.id)))-Number(a.claims.some(c=>caveatIds.has(c.id))))[0];
+ const caveatScore=(id:string)=>{const rank=rankings.get(id)!;return audienceValue(rank)+(rank.audience.caveatImpact==='readiness'?2:0);};
+ const mainCaveat=candidates.flatMap(v=>v.claims.filter(c=>rankings.get(c.id)?.category==='CAVEAT').map(c=>({candidate:v,claim:c})))
+  .sort((a,b)=>caveatScore(b.claim.id)-caveatScore(a.claim.id)||Number(caveatIds.has(b.claim.id))-Number(caveatIds.has(a.claim.id)))[0];
+ const ending=mainCaveat?.candidate!==intro?mainCaveat?.candidate:undefined;
  const core=(v:typeof candidates[number])=>v.claims.some(c=>isCore(rankings.get(c.id)!.category));
- // Editorial scores contain NO visual properties. Media is chosen only after visits.
- const importance=(v:typeof candidates[number])=>Math.max(...v.claims.map(c=>rankings.get(c.id)!.thesisContribution+(proofIds.has(c.id)?2:0)));
+ // Visual demonstrability matters, but attractive media cannot rescue a weak fact.
+ // Actual assets are still selected only after the story earns its visits.
+ const importance=(v:typeof candidates[number])=>Math.max(...v.claims.map(c=>audienceBeatScore(rankings.get(c.id)!,proofIds.has(c.id))));
+ const essentialCaveat=(id:string)=>{const rank=rankings.get(id)!;return rank.category==='CAVEAT'&&rank.audience.caveatImpact==='material'&&rank.audience.essentialForAudience;};
+ if(promotional) {
+  // Keep one practical caveat, including when several caveats share a proof section.
+  for(const candidate of candidates)candidate.claims=candidate.claims.filter(c=>rankings.get(c.id)?.category!=='CAVEAT'||c.id===mainCaveat?.claim.id||essentialCaveat(c.id));
+  candidates=candidates.filter(v=>v.claims.length);
+ }
  const ranked=candidates.filter(v=>v!==intro && v!==ending).sort((a,b)=>importance(b)-importance(a)||candidates.indexOf(a)-candidates.indexOf(b));
+ const essentialCaveatVisits=promotional?candidates.filter(v=>v.claims.some(c=>essentialCaveat(c.id))):[];
  const proof=ranked.filter(core).slice(0,3);
  const differentiator=ranked.find(v=>!core(v) && v.claims.some(c=>rankings.get(c.id)!.category==='DIFFERENTIATOR'));
- let selected=promotional?[intro,...proof,...(proof.length<3 && differentiator?[differentiator]:[]),...(ending?[ending]:[])]:candidates;
+ let selected=promotional?[intro,...proof,...(proof.length<3 && differentiator?[differentiator]:[]),...(ending?[ending]:[]),...essentialCaveatVisits]:candidates;
  if(modelEnabled() && promotional) {
   try {
-   const result=await modelJson('Select the strongest thesis-led story, usually 3–5 visits; fewer when evidence is sparse. State identity/thesis, PROVE the core promise with the best evidence, optionally deepen it with a genuinely important secondary differentiator, then caveat/takeaway. Each major beat must prove/deepen the thesis or give the caveat. No mandatory surprise or differentiator. Compare each chosen beat against omitted CORE_PROOF; an ordinary feature cannot displace better evidence. Minor details must not earn runtime through media availability. Consider explicit source pillars together. Apply revisionFeedback relative to this editorial brief; de-emphasizing a secondary capability must be possible. Preserve source order and local claim ownership. Select section IDs, never invent evidence.',{editorial,revisionFeedback:feedback,candidates:candidates.map(v=>({sectionId:v.section.id,heading:v.section.heading,claims:v.claims.map(c=>({...c,editorial:rankings.get(c.id)})),editorialImportance:importance(v)}))},z.object({sectionIds:z.array(z.string()).min(1).max(5)}),[],'navigation');
+   const result=await modelJson('Select the strongest thesis-led story for a GENERAL TECH/SOFTWARE audience, usually 3–5 visits; fewer when evidence is sparse. State identity/thesis, PROVE the core promise with understandable user-facing evidence, optionally deepen it with a useful secondary differentiator, then one practical caveat/takeaway. Project importance alone is insufficient. Rank thesis relevance × audience value × visual demonstrability, subtract complexity/runtime cost and redundant coverage. Every beat must earn 3–6 seconds: would a normal viewer care, understand it, see it and change their view of the product? Engineering validation does not earn a beat merely because it is unique or serious. No mandatory surprise or differentiator. Compare each chosen beat against omitted audience-valuable CORE_PROOF. Attractive media cannot rescue a weak fact. Apply revisionFeedback relative to this editorial brief. Preserve source order and local claim ownership. Select section IDs from eligible candidates, never invent evidence.',{audience:'general tech/software',mode:'promotional',editorial,revisionFeedback:feedback,candidates:candidates.map(v=>({sectionId:v.section.id,heading:v.section.heading,claims:v.claims.map(c=>({...c,editorial:rankings.get(c.id),audienceValue:audienceValue(rankings.get(c.id)!)})),editorialImportance:importance(v)}))},z.object({sectionIds:z.array(z.string()).min(1).max(5)}),[],'navigation');
    if(result.sectionIds.some(id=>!candidates.some(v=>v.section.id===id)))throw new Error('Planner selected an ineligible section');
-   const ids=new Set(result.sectionIds);ids.add(intro.section.id);if(ending)ids.add(ending.section.id);
+   const ids=new Set(result.sectionIds);ids.add(intro.section.id);if(ending)ids.add(ending.section.id);for(const visit of essentialCaveatVisits)ids.add(visit.section.id);
    selected=candidates.filter(v=>ids.has(v.section.id));
   }catch(error){notes.push(`Outline used editorial fallback: ${(error as Error).message}`);}
  }
@@ -57,18 +67,20 @@ export async function buildOutline(research:Research,inventory:Inventory,feedbac
    const covered=coverage(selected);
    if(!groups(omitted).some(g=>!covered.has(g)))continue;
    const redundant=selected.filter(v=>v!==intro && v!==ending && core(v) && groups(v).length)
-    .sort((a,b)=>importance(a)-importance(b)||candidates.indexOf(b)-candidates.indexOf(a))
-    .find(v=>importance(v)<=importance(omitted) && [...covered].every(g=>coverage(selected.filter(s=>s!==v)).has(g)));
+    .sort((a,b)=>candidates.indexOf(b)-candidates.indexOf(a))
+    .find(v=>[...covered].every(g=>coverage(selected.filter(s=>s!==v)).has(g)));
    if(redundant){selected=selected.filter(v=>v!==redundant);selected.push(omitted);notes.push(`Editorial-importance check replaced repeated ${redundant.section.heading} proof with omitted core pillar ${omitted.section.heading}.`);}
   }
   if(!selected.some(v=>v!==intro && core(v)) && proof[0]){selected.push(proof[0]);notes.push('Restored core proof so the thesis survives beyond the opening.');}
-  const anchors=[intro,...(ending?[ending]:[])];
+  const anchors=[...new Set([intro,...(ending?[ending]:[]),...essentialCaveatVisits])];
   selected=[...anchors,...selected.filter(v=>!anchors.includes(v)).sort((a,b)=>Number(core(b))-Number(core(a))||importance(b)-importance(a)||candidates.indexOf(a)-candidates.indexOf(b)).slice(0,5-anchors.length)];
-  notes.push(promotionalPolicy,'Story importance selected visits before media. Omitted evidence was compared against selected secondary details.');
+  notes.push(promotionalPolicy,'Thesis relevance × audience value × visual demonstrability selected visits before media; complexity/runtime costs and redundant coverage reduce priority. Internal validation and technical micro-caveats remain in research.');
  }
  selected=candidates.filter(v=>selected.includes(v));
- return {revision:storyRevision,editorial,notes,visits:selected.map((v,i)=>{
-  const role=i===0?'introduction':v===ending?'caveat':core(v)?(i===1?'core-experience':'proof'):'differentiator';
-  return {id:`visit-${i+1}`,sectionId:v.section.id,sceneId:v.section.sceneId!,claimIds:v.claims.sort((a,b)=>(rankings.get(b.id)?.thesisContribution||0)-(rankings.get(a.id)?.thesisContribution||0)).map(c=>c.id),purpose:v.section.heading,reason:`${role}: thesis contribution ${importance(v)}; ${productMedia(inventory,v.section.id).length?'local product media can illustrate this selected beat':'source section provides contextual visual support'}`,storyRole:role};
+ const preferredProofClaimIds=promotional?selected.flatMap(v=>v.claims).filter(c=>numericCapabilityProof(c.quote,rankings.get(c.id)!))
+  .sort((a,b)=>audienceBeatScore(rankings.get(b.id)!)-audienceBeatScore(rankings.get(a.id)!)).slice(0,1).map(c=>c.id):[];
+ return {revision:storyRevision,editorial,notes,preferredProofClaimIds,visits:selected.map((v,i)=>{
+  const role=i===0?'introduction':v===ending||essentialCaveatVisits.includes(v)?'caveat':!promotional&&v.claims.some(c=>rankings.get(c.id)!.audience.evidenceKind!=='user-capability')?'technical':core(v)?(i===1?'core-experience':'proof'):'differentiator';
+  return {id:`visit-${i+1}`,sectionId:v.section.id,sceneId:v.section.sceneId!,claimIds:v.claims.sort((a,b)=>audienceBeatScore(rankings.get(b.id)!)-audienceBeatScore(rankings.get(a.id)!)).map(c=>c.id),purpose:v.section.heading,reason:`${role}: audience-weighted importance ${importance(v).toFixed(2)}; ${productMedia(inventory,v.section.id).length?'local product media can illustrate this selected beat':'source section provides contextual visual support'}`,storyRole:role};
  })};
 }

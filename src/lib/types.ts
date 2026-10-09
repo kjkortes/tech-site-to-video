@@ -34,7 +34,7 @@ export interface PageSection { anchors?: { selector: string; scrollY: number; te
 export interface DocumentPage { id: string; sourceId: string; url: string; title: string; order: number; sections: PageSection[]; }
 export interface WalkLocation { pageId: string; sectionId: string; sectionIndex: number; url: string; scrollY: number; selector: string; heading: string; }
 export interface WalkthroughIntent { visitId: string; location: WalkLocation; role: 'hook' | 'context' | 'cutaway' | 'return' | 'ending'; previousLocation?: WalkLocation; nextLocation?: WalkLocation; returnTarget?: WalkLocation; transition?: { from: WalkLocation; duration: number }; }
-export interface StoryOutline { revision: number; editorial?: import('../pipeline/editorial').EditorialBrief; visits: { id: string; sectionId: string; sceneId: string; claimIds: string[]; purpose: string; reason: string; storyRole?: 'introduction'|'core-experience'|'proof'|'technical'|'surprise'|'differentiator'|'caveat' }[]; notes: string[]; }
+export interface StoryOutline { preferredProofClaimIds?: string[]; revision: number; editorial?: import('../pipeline/editorial').EditorialBrief; visits: { id: string; sectionId: string; sceneId: string; claimIds: string[]; purpose: string; reason: string; storyRole?: 'introduction'|'core-experience'|'proof'|'technical'|'surprise'|'differentiator'|'caveat' }[]; notes: string[]; }
 export interface ContinuityReport { passed: boolean; score: number; browserDuration: number; cutawayDuration: number; issues: DiversityReport['issues']; }
 export interface FocusRegion { x: number; y: number; width: number; height: number; } // normalized source coordinates
 export type AssetType = 'image' | 'gif' | 'video' | 'section' | 'code' | 'demo';
@@ -57,7 +57,7 @@ export type ContentMode = 'promotional' | 'tutorial' | 'developer';
 export type SourceType = 'website' | 'githubRepo' | 'documentation';
 export type CameraMode = 'walkthrough' | 'media' | 'detail';
 export interface Inventory { sourceUrl?: string; sourceType?: SourceType; contentMode?: ContentMode; pages?: DocumentPage[]; mapRevision?: number; assets?: VisualAsset[]; directorRevision?: number; scenes: Scene[]; notes: string[]; captureMode?: 'mobile' | 'desktop'; captureViewport?: { width: number; height: number }; captureRevision?: number; }
-export interface ScriptSegment { sectionId?: string; visitId?: string; id: string; text: string; sceneId: string; claimIds: string[]; }
+export interface ScriptSegment { takeawayClaimIds?: string[]; sectionId?: string; visitId?: string; id: string; text: string; sceneId: string; claimIds: string[]; }
 export interface Script { quality?:import('../pipeline/script-quality').ScriptQualityReport; text?:string; review?:ScriptReview; contentMode?: ContentMode; outline?: StoryOutline; revision?: number; title: string; segments: ScriptSegment[]; mode: 'model' | 'extractive'; }
 export interface TimedSegment extends ScriptSegment { start: number; end: number; }
 export interface Transcript { duration: number; segments: TimedSegment[]; words: { text: string; start: number; end: number }[]; timingSource: string; }
